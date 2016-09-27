@@ -1,0 +1,21 @@
+{
+    "name": "aplia/content-tools",
+    "description": "PHP library for working with eZ publish content objects",
+    "homepage": "https://bitbucket.org/aplia/library-content-tools",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Aplia dev-team",
+            "homepage": "https://bitbucket.org/aplia"
+        }
+    ],
+    "require": {
+        "php": ">=5.3",
+        "composer/composer": ">=1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Aplia\\": "Aplia"
+        }
+    }
+}
