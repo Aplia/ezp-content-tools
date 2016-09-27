@@ -14,7 +14,8 @@ chosen attributes.
 
 Example, creating a new content class:
 
-```php
+```
+<?php
 // Define the class, does not modify the database
 $type = new Aplia\Content\ContentType('folder', 'Folder')
 ->addAttribute('ezstring', 'title', 'Title');
@@ -32,6 +33,7 @@ with chosen attributes.
 Example, instantiating a content class:
 
 ```php
+<?php
 // Create an object wrapper which is filled with data
 $type = new Aplia\Content\ContentType('folder');
 $folder = $type->contentObject(array(
