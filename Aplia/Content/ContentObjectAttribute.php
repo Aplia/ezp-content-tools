@@ -48,6 +48,18 @@ class ContentObjectAttribute
             }
         } else if ($type == 'ezselection' && is_int($value)) {
             $attribute->setAttribute( 'data_text', $value );
+        } else if ($type == 'ezimage') {
+            if ($value instanceof HttpFile) {
+                $content = $attribute->attribute('content');
+                if ($value->hasFile && $value->isValid) {
+                    $httpFile = \eZHTTPFile::fetch($value->name);
+                    if ($httpFile && $content) {
+                        $content->setHTTPFile($httpFile);
+                    }
+                }
+            } else {
+                throw new ValueError("Cannot update attribute data for '{$this->identifier}', unsupported content value: $value");
+            }
         } else {
             $asContent = true;
         }
