@@ -41,7 +41,7 @@ class ContentObjectAttribute
 
         $asContent = false;
         if ($type == 'ezxmltext') {
-            $this->updateXmlTextType($attribute, $value);
+            $this->updateXmlTextType($attribute, $value, $object);
         } else if ($type == 'ezselection' && is_int($value)) {
             $attribute->setAttribute( 'data_text', $value );
         } else if ($type == 'ezimage') {
@@ -94,11 +94,11 @@ class ContentObjectAttribute
      * @note This does not store the attribute content to the database.
      * @throws ValueError If $value is not one of the supported types above.
      */
-    public function updateXmlTextType($attribute, $value)
+    public function updateXmlTextType($attribute, $value, $object)
     {
         // If we have HTML content convert it to XML text first
         if ($value instanceof HtmlText) {
-            $value = $this->parseHtmlToXml($value->text);
+            $value = $this->parseHtmlToXml($value->text, $object);
         }
 
         if ($value instanceof RawXmlText) {
@@ -154,8 +154,9 @@ class ContentObjectAttribute
      *
      * @throw HtmlError If it fails to parse the HTML.
      */
-    public function parseHtmlToXml($text)
+    public function parseHtmlToXml($text, $object)
     {
+        $contentObjectID = $object->contentObject->attribute('id');
         $text = preg_replace('/\r/', '', $text);
         $text = preg_replace('/\t/', ' ', $text);
 
