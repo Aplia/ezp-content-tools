@@ -17,7 +17,11 @@ class ContentType
     public $contentObjectName;
     public $isContainer = false;
     public $alwaysAvailable = false;
+    public $sortField;
+    public $sortOrder;
+    public $language = false;
     public $groups = array();
+    public $description = null;
     public $version = eZContentClass::VERSION_STATUS_DEFINED;
     public $attributes = array();
     public $attributesNew = array();
@@ -38,6 +42,9 @@ class ContentType
             if (isset($fields['uuid'])) {
                 $this->uuid = $fields['uuid'];
             }
+            if (isset($fields['language'])) {
+                $this->language = $fields['language'];
+            }
             if (isset($fields['groups'])) {
                 $this->groups = $fields['groups'];
             }
@@ -53,6 +60,15 @@ class ContentType
             if (isset($fields['version'])) {
                 $this->version = $fields['version'];
             }
+            if (isset($fields['sortField'])) {
+                $this->sortField = $fields['sortField'];
+            }
+            if (isset($fields['sortOrder'])) {
+                $this->sortOrder = $fields['sortOrder'];
+            }
+            if (isset($fields['description'])) {
+                $this->description = $fields['description'];
+            }
         }
     }
 
@@ -63,16 +79,27 @@ class ContentType
         $this->attributesChange = array();
     }
 
+    /**
+     * Create the content-class in eZ publish and return the class instance.
+     *
+     * @throw ObjectAlreadyExist if the content-class already exists.
+     */
     public function create()
     {
         $fields = [
             'name' => $this->name,
-            'contentobject_name' => $this->contentobjectName,
+            'contentobject_name' => $this->contentObjectName,
             'identifier' => $this->identifier,
             'is_container' => $this->isContainer,
             'always_available' => $this->alwaysAvailable,
             'version' => $this->version,
         ];
+        if ($this->sortField !== null) {
+            $fields['sort_field'] = $this->sortField;
+        }
+        if ($this->sortOrder !== null) {
+            $fields['sort_order'] = $this->sortOrder;
+        }
         $existing = null;
         if ($this->uuid) {
             $existing = eZContentClass::fetchByRemoteID($this->uuid);
@@ -88,7 +115,17 @@ class ContentType
             }
             $fields['id'] = $this->id;
         }
-        $this->contentClass = eZContentClass::create(false, $fields);
+        if (!$existing) {
+            $existing = eZContentClass::fetchByIdentifier($this->identifier);
+            if ($existing) {
+                throw new ObjectAlreadyExist("Content Class with identifier: '$this->identifier' already exists, cannot create");
+            }
+        }
+        $language = $this->language;
+        $this->contentClass = eZContentClass::create(false, $fields, $language);
+        if ($this->description !== null) {
+            $this->contentClass->setDescription($this->description);
+        }
         $this->contentClass->store();
 
         foreach ($this->attributesNew as $attr) {
@@ -120,19 +157,35 @@ class ContentType
                 $this->groups[$idx] = $relation;
             }
         }
+
+        return $this->contentClass;
     }
 
-    public function remove()
+    /**
+     * Removes the content-class from the eZ publish.
+     * If $allowNoExists is true it will not throw an exception if it does not
+     * exist, but rather return false.
+     *
+     * @param $allowNoExists Whether to require the content-class existing or not.
+     * @throw ObjectDoesNotExist if the content-class does not exist.
+     */
+    public function remove($allowNoExists=false)
     {
         if (!$this->contentClass) {
             if ($this->id) {
-                $this->contentClass = eZContentClass::getch($this->id);
+                $this->contentClass = eZContentClass::fetch($this->id);
                 if (!$this->contentClass) {
+                    if ($allowNoExists) {
+                        return false;
+                    }
                     throw new ObjectDoesNotExist("Failed to fetch eZ Content Class with ID '{$this->id}'");
                 }
             } elseif ($this->identifier) {
                 $this->contentClass = eZContentClass::fetchByIdentifier($this->identifier);
                 if (!$this->contentClass) {
+                    if ($allowNoExists) {
+                        return false;
+                    }
                     throw new ObjectDoesNotExist("Failed to fetch eZ Content Class with identifier '{$this->identifier}'");
                 }
             } else {
@@ -141,7 +194,9 @@ class ContentType
         }
         if ($this->contentClass) {
             $this->contentClass->remove(true, $this->version);
+            return true;
         }
+        return false;
     }
 
     public function update()
@@ -152,21 +207,56 @@ class ContentType
         $this->attributesNew = array();
     }
 
+    /**
+     * Adds a new attribute to the content-type.
+     *
+     * This method can be called with different amount of parameters.
+     *
+     * With one parameter it expects an associative array, the array
+     * contains all the parameters by name.
+     *
+     * With two parameters, the first is the type, and the second is
+     * an associative array with the rest of the named parameters.
+     *
+     * With three parameters, the first is the type, the second is
+     * the identifier, and the third is an associative array with
+     * the rest of the named parameters.
+     *
+     * With four parameters, the first is the type, the second is
+     * the identifier, the third is the name, and the fourth is an
+     * associative array with the rest of the named parameters.
+     *
+     * Note: The attribute will only be created when the content-class is created.
+     *
+     * @return This instance, allows for chaining multiple calls.
+     */
     public function addAttribute($type, $identifier=null, $name=null, $attr=null)
     {
         $argc = func_num_args();
         if ($argc == 1) {
-            $attr = $type;
-            $type = $attr['type'];
-            $identifier = $attr['identifier'];
-            $name = $attr['name'];
+            if (is_array($type)) {
+                $attr = $type;
+                $type = $attr['type'];
+                $identifier = $attr['identifier'];
+                $name = $attr['name'];
+            } else {
+                throw new ImproperlyConfigured("Required fields 'name' and 'identifier' not specified");
+            }
         } else if ($argc == 2) {
-            $attr = $identifier;
-            $identifier = $attr['identifier'];
-            $name = $attr['name'];
+            if (is_array($identifier)) {
+                $attr = $identifier;
+                $identifier = $attr['identifier'];
+                $name = $attr['name'];
+            } else {
+                throw new ImproperlyConfigured("Required field 'name' not specified");
+            }
         } else if ($argc == 3) {
-            $attr = $name;
-            $name = $attr['name'];
+            if (is_array($name)) {
+                $attr = $name;
+                $name = $attr['name'];
+            } else {
+                $attr = array();
+            }
         } else {
             if (!$attr) {
                 $attr = array();
@@ -179,12 +269,20 @@ class ContentType
             }
         }
         if (!$attr instanceof ContentTypeAttribute) {
+            if (!isset($attr['language'])) {
+                $attr['language'] = $this->language;
+            }
             $attr = new ContentTypeAttribute($identifier, $type, $name, $attr);
         }
         $this->attributesNew[] = $attr;
         return $this;
     }
 
+    /**
+     * Removes a content-class attribute with identifier $identifier.
+     *
+     * Note: This removes the attribute directly.
+     */
     public function removeAttribute($identifier)
     {
         if (!$this->contentClass) {

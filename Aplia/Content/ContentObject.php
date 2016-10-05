@@ -249,6 +249,38 @@ class ContentObject
         $this->attributesNew = array();
     }
 
+    /**
+     * Set a attribute in the content-object.
+     *
+     * This method can be called with different amount of parameters.
+     *
+     * With one parameter it expects an associative array, the array
+     * contains all the parameters by name.
+     *
+     * With two parameters, the first is the identifier, and the second is
+     * an associative array with the rest of the named parameters.
+     *
+     * With three parameters, the first is the identifier, the second is
+     * the content, and the third is an associative array with
+     * the rest of the named parameters.
+     *
+     * Example 1:
+     * @code
+     * $object->setAttribute('title', 'My title');
+     * @encode
+     *
+     * Example 2:
+     * @code
+     * $object->setAttribute(array(
+     *     'identifier' => 'title',
+     *     'content' => 'My title'
+     * ));
+     * @encode
+     *
+     * Note: The attribute will only be set when the content-object is created.
+     *
+     * @return This instance, allows for chaining multiple calls.
+     */
     public function setAttribute($identifier, $content = null, $attr = null)
     {
         $argc = func_num_args();
@@ -277,7 +309,7 @@ class ContentObject
         if (!($attr instanceof ContentObjectAttribute)) {
             $attr = new ContentObjectAttribute($identifier, $content, $attr);
         }
-        $this->attributesNew[] = $attr;
+        $this->attributesNew[$identifier] = $attr;
         return $this;
     }
 
