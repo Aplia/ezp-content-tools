@@ -45,7 +45,7 @@ class ContentObjectAttribute
         } else if ($type == 'ezselection' && is_int($value)) {
             $attribute->setAttribute( 'data_text', $value );
         } else if ($type == 'ezimage') {
-            $this->updateXmlTextType($attribute, $value);
+            $this->updateImageType($attribute, $value);
         } else {
             $asContent = true;
         }
