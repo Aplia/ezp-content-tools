@@ -242,3 +242,50 @@ $folder = $type->contentObject(array(
 // Create the object in the database and publish it
 $folder->create(true);
 ```
+
+## Data-Types and object attributes
+
+Most attribute content is set by supplying the `$content` parameter to `setAttribute`,
+this value will then be sent to the data-type as-is using the `fromString` method.
+However some data-types require special content values, the following are suppored.
+
+### ezxmltext
+
+Content must either be imported from HTML or using the internal XML format.
+
+To import HTML content use the `Aplia\Content\HtmlText` class, instantiate it
+with the HTML text and pass it as content. The system will then take care of
+converting it to the internal format. Note: ezxmltext expects the HTML to
+contain `<p>` tags for the main text content, so setting simple text will
+require it to be wrapped in the `<p>` tags.
+
+To import XML content use the `Aplia\Content\RawXmlText` class, instantiate
+it with the text and optionally url object links, related object IDs or
+linked object IDs.
+
+Example with HTML text:
+
+```
+<?php
+$object->setAttribute('body', new Aplia\Content\HtmlText('<p>My text</p>'));
+```
+
+
+### ezselection
+
+This expects the selection value to be the integer value for the key which
+is selected, the first selection is `0`, the next `1` and so on.
+
+
+### ezimage
+
+Currently only supports uploaded HTTP files. Create an instance of
+`Aplia\Content\HttpImage` with the name of the file entry in `$_FILES`.
+
+For instance if the HTML form contained an `<input type="file" name="portrait_image">`
+then the image file will be available in the file entry `portrait_image`.
+
+```
+<?php
+$object->setAttribute('image', new Aplia\Content\HttpFile('portrait_image'));
+```
