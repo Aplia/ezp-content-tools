@@ -4,6 +4,8 @@ namespace Aplia\Content;
 use Aplia\Content\Exceptions\ObjectDoesNotExist;
 use Aplia\Content\Exceptions\ObjectAlreadyExist;
 use Aplia\Content\Exceptions\UnsetValueError;
+use Aplia\Content\Exceptions\TypeError;
+use Aplia\Content\Exceptions\ImproperlyConfigured;
 use Aplia\Content\ContentTypeAttribute;
 use Aplia\Content\ContentObject;
 use eZContentClass;
@@ -69,6 +71,81 @@ class ContentType
             if (isset($fields['description'])) {
                 $this->description = $fields['description'];
             }
+        }
+    }
+
+    /**
+     * Checks if the content class exists in eZ publish.
+     * This requires that either the uuid, id or identifier has been set.
+     *
+     * @return true if it exists, false otherwise
+     */
+    public function exists()
+    {
+        if ($this->contentClass === null) {
+            $existing = null;
+            if ($this->uuid) {
+                $existing = eZContentClass::fetchByRemoteID($this->uuid);
+                if (!$existing) {
+                    return false;
+                }
+            }
+            if (!$existing && $this->id) {
+                $existing = eZContentClass::fetchObject($this->id);
+                if (!$existing) {
+                    return false;
+                }
+            }
+            if (!$existing) {
+                if (!$this->identifier) {
+                    throw new ImproperlyConfigured("No id, uuid or identifier has been set, cannot check for existance");
+                }
+                $existing = eZContentClass::fetchByIdentifier($this->identifier);
+                if (!$existing) {
+                    return false;
+                }
+            }
+            $this->contentClass = $existing;
+        }
+        return true;
+    }
+
+    /**
+     * Checks if the attribute with identifier $identifier exists.
+     *
+     * @throw ObjectDoesNotExist if the content class does not exist
+     * @return true if it exists, false otherwise
+     */
+    public function hasAttribute($identifier)
+    {
+        if (!$this->exists()) {
+            $idText = $this->identifierText();
+            throw new ObjectDoesNotExist("$idText does not exist, cannot check if attribute exists");
+        }
+        $dataMap = $this->contentClass->dataMap();
+        return isset($dataMap[$identifier]);
+    }
+
+    /**
+     * Checks if the attribute with identifier $identifier exists and has
+     * the expected data-type.
+     *
+     * @throw ObjectDoesNotExist if the content class does not exist
+     * @throw ObjectDoesNotExist if the attribute does not exist
+     * @throw TypeError if the attribute has the wrong data-type
+     * @return true if it exists, false otherwise
+     */
+    public function checkAttribute($identifier, $type)
+    {
+        if (!$this->hasAttribute($identifier)) {
+            $idText = $this->identifierText();
+            throw new ObjectDoesNotExist("$idText does not have attribute with identifier: $identifier");
+        }
+        $dataMap = $this->contentClass->dataMap();
+        $attribute = $dataMap[$identifier];
+        $existingType = $attribute->attribute('data_type_string');
+        if ($existingType != $type) {
+            throw new TypeError("$idText and attribute with identifier: $identifier has the wrong type $existingType, expected $type");
         }
     }
 
@@ -194,6 +271,7 @@ class ContentType
         }
         if ($this->contentClass) {
             $this->contentClass->remove(true, $this->version);
+            $this->contentClass = null;
             return true;
         }
         return false;
@@ -201,6 +279,27 @@ class ContentType
 
     public function update()
     {
+        $existing = null;
+        if ($this->uuid) {
+            $existing = eZContentClass::fetchByRemoteID($this->uuid);
+            if (!$existing) {
+                throw new ObjectDoesNotExist("Content Class with UUID: '$this->uuid' does not exist, cannot update");
+            }
+        }
+        if (!$existing && $this->id) {
+            $existing = eZContentClass::fetchObject($this->id);
+            if (!$existing) {
+                throw new ObjectDoesNotExist("Content Class with ID: '$this->id' does not exist, cannot update");
+            }
+        }
+        if (!$existing) {
+            $existing = eZContentClass::fetchByIdentifier($this->identifier);
+            if (!$existing) {
+                throw new ObjectAlreadyExist("Content Class with identifier: '$this->identifier' does not exist, cannot update");
+            }
+        }
+        $this->contentClass = $existing;
+
         foreach ($this->attributesNew as $attr) {
             $this->attributes[] = $this->createAttribute($attr);
         }
@@ -348,5 +447,22 @@ class ContentType
         $params['contentClass'] = $this->getContentClass();
         $object = new ContentObject($params);
         return $object;
+    }
+
+    /**
+     * Returns a text string uniquely identifying the content class.
+     */
+    public function identifierText()
+    {
+        if ($this->uuid) {
+            $idText = "with UUID: $this->uuid";
+        } else if ($this->id) {
+            $idText = "with ID: $this->id";
+        } else if ($this->identifier) {
+            $idText = "with identifier: $this->identifier";
+        } else {
+            return "Unknown Content Class";
+        }
+        return "Content Class $idText";
     }
 }
