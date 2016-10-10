@@ -163,14 +163,14 @@ class ContentType
      */
     public function create()
     {
-        $fields = [
+        $fields = array(
             'name' => $this->name,
             'contentobject_name' => $this->contentObjectName,
             'identifier' => $this->identifier,
             'is_container' => $this->isContainer,
             'always_available' => $this->alwaysAvailable,
             'version' => $this->version,
-        ];
+        );
         if ($this->sortField !== null) {
             $fields['sort_field'] = $this->sortField;
         }
