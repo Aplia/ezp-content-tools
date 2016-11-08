@@ -2,6 +2,7 @@
 namespace Aplia\Content;
 
 use Exception;
+use Aplia\Support\Arr;
 use Aplia\Content\Exceptions\AttributeError;
 use Aplia\Content\Exceptions\ValueError;
 use Aplia\Content\Exceptions\UnsetValueError;
@@ -13,16 +14,20 @@ class ContentObjectAttribute
     public $value;
     public $id;
     public $contentAttribute;
+    public $isDirty;
 
     public function __construct($identifier, $value, $fields = null)
     {
         $this->identifier = $identifier;
         $this->value = $value;
-        if ($fields) {
-            if (isset($fields['id'])) {
-                $this->id = $fields['id'];
-            }
-        }
+        $this->id = Arr::get($fields, 'id');
+        $this->isDirty = false;
+    }
+
+    public function setValue($value)
+    {
+        $this->value = $value;
+        $this->isDirty = true;
     }
 
     public function update($object)
@@ -30,11 +35,14 @@ class ContentObjectAttribute
         if (!$this->identifier) {
             throw new UnsetValueError("ContentClass attribute has no identifier, cannot create");
         }
-        $dataMap = $object->contentObject->dataMap();
+        $dataMap = $object->attributeMap();
         if (!isset($dataMap[$this->identifier])) {
             throw new AttributeError("Object with ID '{$object->contentObject->ID}' does not have an attribute with identifier '{$this->identifier}'");
         }
         $attribute = $dataMap[$this->identifier];
+        if (!$this->isDirty) {
+            return false;
+        }
 
         $type = $attribute->attribute('data_type_string');
         $value = $this->value;
@@ -55,6 +63,7 @@ class ContentObjectAttribute
         }
         $attribute->store();
         $this->contentAttribute = $attribute;
+        $this->isDirty = false;
         return $attribute;
     }
 
