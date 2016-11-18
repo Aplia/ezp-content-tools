@@ -118,7 +118,7 @@ class ContentObject
                     }
                     $locations[$idx] = $location;
                 }
-                $this->locations = array_merge($this->locations, $locations);
+                $this->locations = $this->locations ? array_merge($this->locations, $locations) : $locations;
             }
 
             // Ensure the locations array has the correct structure, and figure out a main location
