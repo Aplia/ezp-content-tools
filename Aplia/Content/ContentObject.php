@@ -113,6 +113,11 @@ class ContentObject
                     if (!isset($location['parent_id']) && !isset($location['parent_node'])) {
                         throw new UnsetValueError("No 'parent_id' or 'parent_node' value is set for location[$idx]");
                     }
+                    if ($location['parent_id'] instanceof \eZContentObjectTreeNode) {
+                        $location['parent_id'] = $location['parent_id']->attribute('node_id');
+                    } elseif ($location['parent_id'] instanceof \eZContentObject) {
+                        $location['parent_id'] = $location['parent_id']->attribute('main_node_id');
+                    }
                     if (!isset($location['is_main'])) {
                         $location['is_main'] = False;
                     }

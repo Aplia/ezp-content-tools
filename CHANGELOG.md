@@ -2,6 +2,13 @@
 
 Changelog for the `contentquery` package.
 
+## 1.1.2
+- The `locations` parameter to ContentObject can now contain content nodes or
+  content objects. The node ID is extracted from those objects if used.
+
+## 1.1.1
+- Fix for `locations` parameter if it is null.
+
 ## 1.1.0
 - Support for updating content objects. Create the `ContentObject` instance with the
   actual content object instance (or id/uuid) specified.
