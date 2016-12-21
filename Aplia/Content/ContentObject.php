@@ -224,6 +224,11 @@ class ContentObject
         }
         $this->attributesChange = array();
 
+        // Update name entries for this version/language
+        $name = $this->contentClass->contentObjectName($this->contentObject, $this->contentObject->attribute('current_version'), $languageCode);
+        $this->contentObject->setName($name);
+        $this->contentObject->store();
+
         if ($publish) {
             // Getting the current transaction counter to check if all transactions are committed during content/publish operation (see below)
             $db = \eZDB::instance();
@@ -388,6 +393,12 @@ class ContentObject
             $this->attributes[$contentAttribute->attribute('contentclass_attribute_identifier')] = $attribute;
         }
         $this->attributesChange = array();
+
+        // Update name entries for this version/language
+        $languageCode = $this->contentObject->currentLanguage();
+        $name = $this->contentClass->contentObjectName($this->contentObject, $contentVersionNo, $languageCode);
+        $this->contentObject->setName($name);
+        $this->contentObject->store();
 
         if ($publish) {
             // Getting the current transaction counter to check if all transactions are committed during content/publish operation (see below)
