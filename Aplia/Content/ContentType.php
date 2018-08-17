@@ -107,26 +107,20 @@ class ContentType
             $existing = null;
             if ($this->uuid) {
                 $existing = eZContentClass::fetchByRemoteID($this->uuid);
-                if (!$existing) {
-                    return false;
-                }
             }
             if (!$existing && $this->id) {
                 $existing = eZContentClass::fetchObject($this->id);
-                if (!$existing) {
-                    return false;
-                }
             }
             if (!$existing) {
                 if (!$this->identifier) {
                     throw new ImproperlyConfigured("No id, uuid or identifier has been set, cannot check for existance");
                 }
                 $existing = eZContentClass::fetchByIdentifier($this->identifier);
-                if (!$existing) {
-                    return false;
-                }
             }
-            $this->contentClass = $existing;
+            if (!$existing) {
+                return false;
+            }
+        $this->contentClass = $existing;
         }
         return true;
     }
