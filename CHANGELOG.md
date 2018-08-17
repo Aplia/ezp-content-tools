@@ -2,6 +2,13 @@
 
 Changelog for the `contentquery` package.
 
+## 1.2
+
+- Support for migrations using Phinx, a new class Migration\Configuration sets
+  up Phinx based on eZ publish site data.
+- Improved API for ContentType by making more consistent (removeAttribute vs deleteAttribute)
+  and adding more methods for common operations.
+
 ## 1.1.2
 - The `locations` parameter to ContentObject can now contain content nodes or
   content objects. The node ID is extracted from those objects if used.

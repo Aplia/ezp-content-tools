@@ -295,3 +295,58 @@ then the image file will be available in the file entry `portrait_image`.
 <?php
 $object->setAttribute('image', new Aplia\Content\HttpFile('portrait_image'));
 ```
+
+## Migration
+
+This package has support for the Phinx system for migrations of database
+content and other data. First install Phinx using composer.
+
+```
+composer require "robmorgan/phinx:^0.10.6"
+```
+
+If you get issues with `symfony/console` try adding `symfony/console:^3.0` as a requirement.
+
+Next sphinx requires a configuration file, the easiest way is to create
+the `sphinx.php` file and make use of the `Aplia\Migration\Configuration` class
+to get automatic setup based on the eZ publish site.
+
+Create the file and add:
+```
+<?php
+require 'autoload.php';
+$configuration = new \Aplia\Migration\Configuration();
+return $configuration->setupPhinx();
+```
+and add it to git.
+
+The configuration assumes all migrations are located in `extension/site/migrations`.
+If you have an older site with a different extension name for the site the
+path must be configured in `project.ini`, add the following:
+
+```
+[Migration]
+Path=extension/mysite/migrations
+```
+
+Then use `vendor/bin/phinx` to handle migrations, remember to add `-c phinx.php` to
+after all commands. For instance to see the current status.
+
+```
+vendor/bin/phinx status -c phinx.php
+```
+
+To create a new migration file use `create`, for instance:
+
+```
+vendor/bin/phinx create -c phinx.php Initial
+```
+
+To run migration use `migrate` command, for instance:
+
+```
+vendor/bin/phinx migrate -c phinx.php
+```
+
+To migrate eZ publish content the classes `ContentType` and `ContentObject`
+may be used inside the migrations.
