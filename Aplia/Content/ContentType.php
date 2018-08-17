@@ -38,8 +38,29 @@ class ContentType
         $this->identifier = $identifier;
         $this->name = $name ? $name : $identifier;
         if ($fields) {
+            $this->set($fields);
+        }
+    }
+
+    /**
+     * Set multiple field values from an array.
+     * 
+     * e.g.
+     * @code
+     * $type->set(array(
+     *     "name" => "Folder",
+     *     "isContainer" => true,
+     * ))
+     * @endcode
+     */
+    public function set($fields = null)
+    {
+        if ($fields) {
             if (isset($fields['id'])) {
                 $this->id = $fields['id'];
+            }
+            if (isset($fields['name'])) {
+                $this->name = $fields['name'];
             }
             if (isset($fields['uuid'])) {
                 $this->uuid = $fields['uuid'];
