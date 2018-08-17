@@ -3,6 +3,7 @@ namespace Aplia\Content;
 
 use Aplia\Content\Exceptions\ObjectAlreadyExist;
 use Aplia\Content\Exceptions\UnsetValueError;
+use SimpleXMLElement;
 
 class ContentTypeAttribute
 {
@@ -116,6 +117,23 @@ class ContentTypeAttribute
         return $attribute;
     }
 
+    /*!
+     * Generates an xml string from an array of options. Expects array of options as a list of names.
+     * E.g.:
+     *      array( 'name 1', 'name 2' )
+     * Here, the id-attributes will be set to the corresponding array indices
+     */
+    public function makeSelectionXml(array $options)
+    {
+        $xmlObj = new SimpleXMLElement('<?xml version="1.0" encoding="UTF-8"?><ezselection/>');
+        foreach ($options as $id => $name) {
+            $optionXML = $xmlObj->addChild('option');
+            $optionXML->addAttribute('id', $id);
+            $optionXML->addAttribute('name', $name);
+        }
+        return $xmlObj->asXML();
+    }
+
     public function setAttributeFields(&$fields, &$content, $contentClass)
     {
         $type = $this->type;
@@ -162,6 +180,16 @@ class ContentTypeAttribute
         } else if ($type == 'ezurl') {
             if (isset($value['default'])) {
                 $fields['data_text1'] = $value['default'];
+            }
+        } else if ($type == 'ezselection') {
+            if (isset($value['is_multiselect'])) {
+                $fields['data_int1'] = $value['is_multiselect'];
+            } else {
+                $fields['data_int1'] = "0";
+            }
+
+            if (isset($value['options'])) {
+                $fields['data_text5'] = $this->makeSelectionXml($value['options']);
             }
         } else {
             // Let the datatype set the values using class-content value
