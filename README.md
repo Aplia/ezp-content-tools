@@ -48,6 +48,12 @@ The following are common for all attributes.
 - `language` - The language of the attribute, defaults to the same language as the `ContentType` it belongs to.
 - `description` - Description text for the attribute.
 
+Similarly attributes may be removed with `removeAttribute` and supplying the identifier.
+This schedules the attribute to be removed on the next call to `save()`.
+
+There are also methods for checking for attribute existance and fetching attribute object. (`hasAttribute()`
+and `classAttribute()`)
+
 ## Data-Types
 
 While it is is possible to create an attribute with any data-type
