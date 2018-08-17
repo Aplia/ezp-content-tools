@@ -110,13 +110,15 @@ class ContentObject
                     if (!is_array($location)) {
                         $location = array('parent_id' => $location);
                     }
-                    if (!isset($location['parent_id']) && !isset($location['parent_node'])) {
-                        throw new UnsetValueError("No 'parent_id' or 'parent_node' value is set for location[$idx]");
+                    if (!isset($location['parent_id']) && !isset($location['parent_node']) && !isset($location['parent_uuid'])) {
+                        throw new UnsetValueError("No 'parent_id', 'parent_uuid' or 'parent_node' value is set for location[$idx]");
                     }
-                    if ($location['parent_id'] instanceof \eZContentObjectTreeNode) {
-                        $location['parent_id'] = $location['parent_id']->attribute('node_id');
-                    } elseif ($location['parent_id'] instanceof \eZContentObject) {
-                        $location['parent_id'] = $location['parent_id']->attribute('main_node_id');
+                    if (isset($location['parent_id'])) {
+                        if ($location['parent_id'] instanceof \eZContentObjectTreeNode) {
+                            $location['parent_id'] = $location['parent_id']->attribute('node_id');
+                        } elseif ($location['parent_id'] instanceof \eZContentObject) {
+                            $location['parent_id'] = $location['parent_id']->attribute('main_node_id');
+                        }
                     }
                     if (!isset($location['is_main'])) {
                         $location['is_main'] = False;
@@ -533,8 +535,15 @@ class ContentObject
         foreach ($locations as $idx => $location) {
             $parentNode = isset($location['parent_node']) ? $location['parent_node'] : null;
             if (!$parentNode) {
-                $parentNodeId = $location['parent_id'];
-                $parentNode = eZContentObjectTreeNode::fetch($parentNodeId);
+                if (isset($location['parent_id'])) {
+                    $parentNodeId = $location['parent_id'];
+                    $parentNode = eZContentObjectTreeNode::fetch($parentNodeId);
+                } else if (isset($location['parent_uuid'])) {
+                    $parentNodeId = $parentNodeUuid = $location['parent_uuid'];
+                    $parentNode = eZContentObjectTreeNode::fetchByRemoteID($parentNodeUuid);
+                } else {
+                    throw new UnsetValueError("No 'parent_id', 'parent_uuid' or 'parent_node' value is set for location[$idx]");
+                }
                 if (!$parentNode) {
                     throw new ObjectDoesNotExist("Invalid node ID, node not found: $parentNodeId");
                 }
