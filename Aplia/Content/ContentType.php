@@ -10,6 +10,9 @@ use Aplia\Content\ContentTypeAttribute;
 use Aplia\Content\ContentObject;
 use eZContentClass;
 
+/**
+ * @property $contentClass The eZContentClass object that is being referenced or created
+ */
 class ContentType
 {
     public $id;
@@ -17,7 +20,7 @@ class ContentType
     public $uuid;
     public $identifier;
     public $contentObjectName;
-    public $isContainer = false;
+    public $isContainer;
     public $alwaysAvailable = false;
     public $sortField;
     public $sortOrder;
@@ -31,7 +34,13 @@ class ContentType
     public $attributesChange = array();
     public $objects = array();
 
-    public $contentClass;
+    /**
+     * Controls whether the datamap for attributes has been loaded
+     * from the DB or not.
+     */
+    protected $isAttributeMapLoaded = false;
+
+    protected $_contentClass;
 
     public function __construct($identifier, $name=null, $fields = null)
     {
@@ -52,6 +61,8 @@ class ContentType
      *     "isContainer" => true,
      * ))
      * @endcode
+     * 
+     * @return self
      */
     public function set($fields = null)
     {
@@ -93,6 +104,7 @@ class ContentType
                 $this->description = $fields['description'];
             }
         }
+        return $this;
     }
 
     /**
@@ -103,32 +115,14 @@ class ContentType
      */
     public function exists()
     {
-        if ($this->contentClass === null) {
-            $existing = null;
-            if ($this->uuid) {
-                $existing = eZContentClass::fetchByRemoteID($this->uuid);
-            }
-            if (!$existing && $this->id) {
-                $existing = eZContentClass::fetchObject($this->id);
-            }
-            if (!$existing) {
-                if (!$this->identifier) {
-                    throw new ImproperlyConfigured("No id, uuid or identifier has been set, cannot check for existance");
-                }
-                $existing = eZContentClass::fetchByIdentifier($this->identifier);
-            }
-            if (!$existing) {
-                return false;
-            }
-        $this->contentClass = $existing;
-        }
-        return true;
+        $this->getContentClass(false);
+        return $this->_contentClass !== null;
     }
 
     /**
      * Checks if the attribute with identifier $identifier exists.
      *
-     * @throw ObjectDoesNotExist if the content class does not exist
+     * @throws ObjectDoesNotExist if the content class does not exist
      * @return true if it exists, false otherwise
      */
     public function hasAttribute($identifier)
@@ -137,17 +131,24 @@ class ContentType
             $idText = $this->identifierText();
             throw new ObjectDoesNotExist("$idText does not exist, cannot check if attribute exists");
         }
-        $dataMap = $this->contentClass->dataMap();
-        return isset($dataMap[$identifier]);
+        // If attribute is meant to be removed, return false
+        if (isset($this->attributesRemove[$identifier])) {
+            return false;
+        }
+        if (isset($this->attributesNew[$identifier]) || isset($this->attributes[$identifier])) {
+            return true;
+        }
+        $this->loadAttributeMap();
+        return isset($this->attributes[$identifier]);
     }
 
     /**
      * Checks if the attribute with identifier $identifier exists and has
      * the expected data-type.
      *
-     * @throw ObjectDoesNotExist if the content class does not exist
-     * @throw ObjectDoesNotExist if the attribute does not exist
-     * @throw TypeError if the attribute has the wrong data-type
+     * @throws ObjectDoesNotExist if the content class does not exist
+     * @throws ObjectDoesNotExist if the attribute does not exist
+     * @throws TypeError if the attribute has the wrong data-type
      * @return true if it exists, false otherwise
      */
     public function checkAttribute($identifier, $type)
@@ -156,14 +157,50 @@ class ContentType
             $idText = $this->identifierText();
             throw new ObjectDoesNotExist("$idText does not have attribute with identifier: $identifier");
         }
-        $dataMap = $this->contentClass->dataMap();
-        $attribute = $dataMap[$identifier];
+        $attribute = $this->attributes[$identifier];
         $existingType = $attribute->attribute('data_type_string');
         if ($existingType != $type) {
             throw new TypeError("$idText and attribute with identifier: $identifier has the wrong type $existingType, expected $type");
         }
     }
 
+    /**
+     * Returns the ContentTypeAttribute object for the class-attribute with identifier $identifier.
+     *
+     * @throws ObjectDoesNotExist if the content class does not exist
+     * @throws ObjectDoesNotExist if the attribute does not exist
+     * @return ContentTypeAttribute
+     */
+    public function getAttribute($identifier)
+    {
+        if (!$this->hasAttribute($identifier)) {
+            $idText = $this->identifierText();
+            throw new ObjectDoesNotExist("$idText does not have attribute with identifier: $identifier");
+        }
+        if (isset($this->attributesNew[$identifier])) {
+            $attr = $this->attributesNew[$identifier];
+            if (!($attr instanceof ContentTypeAttribute)) {
+                $attr = new ContentTypeAttribute($attr['identifier'], $attr['type'], $attr['name'], $attr);
+            }
+            return $attr;
+        }
+        return $this->attributes[$identifier];
+    }
+
+    /**
+     * Returns the eZContentClassAttribute object for the identifier $identifier.
+     * 
+     * @return eZContentClassAttribute
+     */
+    public function classAttribute($identifier)
+    {
+        $typeAttribute = $this->getAttribute($identifier);
+        return $typeAttribute->classAttribute;
+    }
+
+    /**
+     * Reset any pending attributes to be created or removed.
+     */
     public function resetPending()
     {
         $this->attributesNew = array();
@@ -174,10 +211,13 @@ class ContentType
     /**
      * Create the content-class in eZ publish and return the class instance.
      *
-     * @throw ObjectAlreadyExist if the content-class already exists.
+     * @throws ObjectAlreadyExist if the content-class already exists.
      */
     public function create()
     {
+        if ($this->isContainer === null) {
+            $this->isContainer = false;
+        }
         $fields = array(
             'name' => $this->name,
             'contentobject_name' => $this->contentObjectName,
@@ -214,15 +254,17 @@ class ContentType
             }
         }
         $language = $this->language;
-        $this->contentClass = eZContentClass::create(false, $fields, $language);
+        $this->_contentClass = eZContentClass::create(false, $fields, $language);
         if ($this->description !== null) {
-            $this->contentClass->setDescription($this->description);
+            $this->_contentClass->setDescription($this->description);
         }
-        $this->contentClass->store();
+        $this->_contentClass->store();
 
         foreach ($this->attributesNew as $attr) {
             $this->createAttribute($attr);
         }
+        $this->attributesNew = array();
+        $this->attributesRemove = array();
 
         if ($this->groups) {
             foreach ($this->groups as $idx => $group) {
@@ -242,7 +284,7 @@ class ContentType
                 }
 
                 $relation = \eZContentClassClassGroup::create(
-                    $this->contentClass->attribute('id'), $this->contentClass->attribute('version'),
+                    $this->_contentClass->attribute('id'), $this->_contentClass->attribute('version'),
                     $group->attribute('id'), $group->attribute('name')
                 );
                 $relation->store();
@@ -250,7 +292,9 @@ class ContentType
             }
         }
 
-        return $this->contentClass;
+        $this->isAttributeMapLoaded = true;
+
+        return $this->_contentClass;
     }
 
     /**
@@ -259,22 +303,22 @@ class ContentType
      * exist, but rather return false.
      *
      * @param $allowNoExists Whether to require the content-class existing or not.
-     * @throw ObjectDoesNotExist if the content-class does not exist.
+     * @throws ObjectDoesNotExist if the content-class does not exist.
      */
     public function remove($allowNoExists=false)
     {
-        if (!$this->contentClass) {
+        if (!$this->_contentClass) {
             if ($this->id) {
-                $this->contentClass = eZContentClass::fetch($this->id);
-                if (!$this->contentClass) {
+                $this->_contentClass = eZContentClass::fetch($this->id);
+                if (!$this->_contentClass) {
                     if ($allowNoExists) {
                         return false;
                     }
                     throw new ObjectDoesNotExist("Failed to fetch eZ Content Class with ID '{$this->id}'");
                 }
             } elseif ($this->identifier) {
-                $this->contentClass = eZContentClass::fetchByIdentifier($this->identifier);
-                if (!$this->contentClass) {
+                $this->_contentClass = eZContentClass::fetchByIdentifier($this->identifier);
+                if (!$this->_contentClass) {
                     if ($allowNoExists) {
                         return false;
                     }
@@ -284,41 +328,48 @@ class ContentType
                 throw new UnsetValueError("No ID or identifier set for eZ Content Class");
             }
         }
-        if ($this->contentClass) {
-            $this->contentClass->remove(true, $this->version);
-            $this->contentClass = null;
+        if ($this->_contentClass) {
+            $this->_contentClass->remove(true, $this->version);
+            $this->_contentClass = null;
+            $this->isAttributeMapLoaded = false;
+            $this->attributesNew = array();
+            $this->attributesRemove = array();
             return true;
         }
         return false;
     }
 
+    /**
+     * Updates content-class in database and creates any new attributes.
+     * 
+     * @return self
+     */
     public function update()
     {
-        $existing = null;
-        if ($this->uuid) {
-            $existing = eZContentClass::fetchByRemoteID($this->uuid);
-            if (!$existing) {
-                throw new ObjectDoesNotExist("Content Class with UUID: '$this->uuid' does not exist, cannot update");
-            }
-        }
-        if (!$existing && $this->id) {
-            $existing = eZContentClass::fetchObject($this->id);
-            if (!$existing) {
-                throw new ObjectDoesNotExist("Content Class with ID: '$this->id' does not exist, cannot update");
-            }
-        }
-        if (!$existing) {
-            $existing = eZContentClass::fetchByIdentifier($this->identifier);
-            if (!$existing) {
-                throw new ObjectAlreadyExist("Content Class with identifier: '$this->identifier' does not exist, cannot update");
-            }
-        }
-        $this->contentClass = $existing;
+        $contentClass = $this->getContentClass();
 
-        foreach ($this->attributesNew as $attr) {
-            $this->attributes[] = $this->createAttribute($attr);
+        foreach ($this->attributesNew as $attrData) {
+            $attr = $this->createAttribute($attrData);
+            $this->attributes[$attr->identifier] = $attr;
+        }
+        foreach ($this->attributesRemove as $identifier => $attrData) {
+            $classAttribute = $contentClass->fetchAttributeByIdentifier($identifier);
+            $classAttribute->removeThis();
+            unset($this->attributes[$identifier]);
         }
         $this->attributesNew = array();
+        $this->attributesRemove = array();
+        return $this;
+    }
+
+    /**
+     * Saves the changes to class and attributes back to database.
+     * 
+     * @return self
+     */
+    public function save()
+    {
+        return $this->update();
     }
 
     /**
@@ -342,7 +393,7 @@ class ContentType
      *
      * Note: The attribute will only be created when the content-class is created.
      *
-     * @return This instance, allows for chaining multiple calls.
+     * @return self
      */
     public function addAttribute($type, $identifier=null, $name=null, $attr=null)
     {
@@ -388,29 +439,82 @@ class ContentType
             }
             $attr = new ContentTypeAttribute($identifier, $type, $name, $attr);
         }
-        $this->attributesNew[] = $attr;
+        $this->attributesNew[$attr->identifier] = $attr;
+        unset($this->attributesRemove[$identifier]);
         return $this;
     }
 
     /**
-     * Removes a content-class attribute with identifier $identifier.
-     *
-     * Note: This removes the attribute directly.
+     * Removes a content-class attribute with identifier $identifier by scheduling
+     * for the next call to save() or update().
+     * 
+     * @return self
      */
     public function removeAttribute($identifier)
     {
-        $contentClass = $this->getContentClass();
-        $classAttribute = $contentClass->fetchAttributeByIdentifier($identifier);
-        $classAttribute->removeThis();
+        $typeAttribute = null;
+        if ($identifier instanceof ContentTypeAttribute) {
+            $typeAttribute = $identifier;
+            $identifier = $typeAttribute->identifier;
+        }
+        if (isset($this->attributesRemove[$identifier])) {
+            // Already scheduled for removal
+            return $this;
+        }
+        unset($this->attributesNew[$identifier]);
+        $this->attributesRemove[$identifier] = array();
+        return $this;
     }
 
+    /**
+     * Creates the class-attribute in the DB and updates the internal attribute map.
+     * $attr is either an array with key/value for the attribute or an ContentObjectAttribute.
+     */
     public function createAttribute($attr)
     {
         if (!$attr instanceof ContentTypeAttribute) {
             $attr = new ContentTypeAttribute($attr['identifier'], $attr['type'], $attr['name'], $attr);
         }
-        $attr->create($this->contentClass);
+        $classAttribute = $attr->create($this->_contentClass);
+        $this->attributes[$classAttribute->attribute('identifier')] = $classAttribute;
         return $attr;
+    }
+
+    /**
+     * Deletes a content-class attribute from database and removes any scheduled removals.
+     *
+     * Note: This removes the attribute directly.
+     * 
+     * @return self
+     */
+    public function deleteAttribute($identifier)
+    {
+        $typeAttribute = null;
+        if ($identifier instanceof ContentTypeAttribute) {
+            $typeAttribute = $identifier;
+            $identifier = $typeAttribute->identifier;
+        }
+        unset($this->attributesRemove[$identifier]);
+        unset($this->attributesNew[$identifier]);
+        $contentClass = $this->getContentClass();
+        $classAttribute = $contentClass->fetchAttributeByIdentifier($identifier);
+        $classAttribute->removeThis();
+        return $this;
+    }
+
+    /**
+     * Returns dynamic properties
+     * 
+     * - contentClass - Returns the content-class this object refers to.
+     * 
+     * @return self
+     */
+    public function __get($name)
+    {
+        if ($name == "contentClass") {
+            return $this->getContentClass();
+        }
+        throw Exception("Property $name does not exist");
     }
 
     /**
@@ -418,38 +522,36 @@ class ContentType
      * If it does not exist in memory it is then fetched from DB using
      * either the uuid (remote id), id or identifier.
      * 
+     * @param $ensureExists If true it throws an exception if it does not exist, otherwise returns null.
+     * 
      * @throws ObjectDoesNotExist if the content-class could not be fetched from DB
      */
-    public function getContentClass()
+    public function getContentClass($ensureExists=true)
     {
-        if (!$this->contentClass) {
+        if (!$this->_contentClass) {
             $contentClass = null;
             if ($this->uuid) {
                 $contentClass = eZContentClass::fetchByRemoteID($this->uuid);
-                if (!$contentClass) {
-                    throw new ObjectDoesNotExist("No Content Class with UUID: '$this->uuid'");
-                }
             }
             if (!$contentClass && $this->id) {
                 $contentClass = eZContentClass::fetchObject($this->id);
-                if (!$contentClass) {
-                    throw new ObjectDoesNotExist("No Content Class with ID: '$this->id'");
-                }
             }
             if (!$contentClass && $this->identifier) {
                 $contentClass = eZContentClass::fetchByIdentifier($this->identifier);
-                if (!$contentClass) {
-                    throw new ObjectDoesNotExist("No Content Class with identifier: '$this->identifier'");
-                }
             }
-            if (!$contentClass) {
-                throw new ObjectDoesNotExist("No Content Class could be fetched");
+            if (!$contentClass && $ensureExists) {
+                throw new ObjectDoesNotExist("No Content Class could be fetched using uuid, id or identifier");
             }
-            $this->contentClass = $contentClass;
+            $this->_contentClass = $contentClass;
         }
-        return $this->contentClass;
+        return $this->_contentClass;
     }
 
+    /**
+     * Returns a proxy object (ContentObject) for a new content-object based on this
+     * content-class. The actual content-object is not created and may
+     * even exist in the DB.
+     */
     public function contentObject($params)
     {
         $params['identifier'] = $this->identifier;
@@ -473,5 +575,24 @@ class ContentType
             return "Unknown Content Class";
         }
         return "Content Class $idText";
+    }
+
+    /**
+     * Ensures that the attribute map is complete, if incomplete loads the attributes
+     * from the DB.
+     */
+    protected function loadAttributeMap()
+    {
+        if ($this->isAttributeMapLoaded) {
+            return;
+        }
+        $this->getContentClass();
+        $dataMap = $this->_contentClass->dataMap();
+        foreach ($dataMap as $identifier => $classAttribute) {
+            $attr = new ContentTypeAttribute($attr->attribute('identifier'), $attr->attribute('data_type_string'), $attr->attribute('name'));
+            $attr->classAttribute = $classAttribute;
+            $this->attributes[$identifier] = $attr;
+        }
+        $this->isAttributeMapLoaded = true;
     }
 }

@@ -18,6 +18,8 @@ class ContentTypeAttribute
     public $isInformationCollector = false;
     public $canTranslate = true;
 
+    public $classAttribute;
+
     public function __construct($identifier, $type, $name, $fields = null)
     {
         $this->identifier = $identifier;
