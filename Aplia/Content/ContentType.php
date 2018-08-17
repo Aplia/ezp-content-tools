@@ -399,22 +399,9 @@ class ContentType
      */
     public function removeAttribute($identifier)
     {
-        if (!$this->contentClass) {
-            if ($this->id) {
-                $this->contentClass = eZContentClass::getch($this->id);
-                if (!$this->contentClass) {
-                    throw new ObjectDoesNotExist("Failed to fetch eZ Content Class with ID '{$this->id}'");
-                }
-            } elseif ($this->identifier) {
-                $this->contentClass = eZContentClass::fetchByIdentifier($this->identifier);
-                if (!$this->contentClass) {
-                    throw new ObjectDoesNotExist("Failed to fetch eZ Content Class with identifier '{$this->identifier}'");
-                }
-            } else {
-                throw new UnsetValueError("No ID or identifier set for eZ Content Class");
-            }
-        }
-        $classAttribute = $this->contentClass->fetchAttributeByIdentifier($identifier);
+        $contentClass = $this->getContentClass();
+        $classAttribute = $contentClass->fetchAttributeByIdentifier($identifier);
+        $classAttribute->removeThis();
     }
 
     public function createAttribute($attr)
@@ -426,6 +413,13 @@ class ContentType
         return $attr;
     }
 
+    /**
+     * Returns the content-class object.
+     * If it does not exist in memory it is then fetched from DB using
+     * either the uuid (remote id), id or identifier.
+     * 
+     * @throws ObjectDoesNotExist if the content-class could not be fetched from DB
+     */
     public function getContentClass()
     {
         if (!$this->contentClass) {
