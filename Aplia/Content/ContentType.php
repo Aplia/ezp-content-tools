@@ -9,9 +9,14 @@ use Aplia\Content\Exceptions\ImproperlyConfigured;
 use Aplia\Content\ContentTypeAttribute;
 use Aplia\Content\ContentObject;
 use eZContentClass;
+use eZContentClassClassGroup;
+use eZContentObjectTreeNode;
 
 /**
+ * Wrapper around eZContentClass to make it easier to create and modify content classes.
+ * 
  * @property $contentClass The eZContentClass object that is being referenced or created
+ * @property $attributes All defined attributes for new class or existing attributs for existing class.
  */
 class ContentType
 {
@@ -19,20 +24,31 @@ class ContentType
     public $name;
     public $uuid;
     public $identifier;
+    public $created;
     public $contentObjectName;
+    public $urlAliasName;
     public $isContainer;
     public $alwaysAvailable = false;
     public $sortField;
     public $sortOrder;
     public $language = false;
     public $groups = array();
+    /**
+     * Controls whether existing groups are removed before adding new ones.
+     */
+    public $groupReset = false;
     public $description = null;
     public $version = eZContentClass::VERSION_STATUS_DEFINED;
-    public $attributes = array();
+    public $_attributes = array();
     public $attributesNew = array();
     public $attributesRemove = array();
     public $attributesChange = array();
     public $objects = array();
+    /**
+     * Pending translations, the key is the language and the value is an array with attributes to translate on class.
+     * If it contains 'remove' => true then the translation is removed.
+     */
+    public $translations = array();
 
     /**
      * Controls whether the datamap for attributes has been loaded
@@ -76,14 +92,28 @@ class ContentType
             if (isset($fields['uuid'])) {
                 $this->uuid = $fields['uuid'];
             }
+            if (isset($fields['created'])) {
+                $this->created = $fields['created'];
+            }
             if (isset($fields['language'])) {
                 $this->language = $fields['language'];
             }
             if (isset($fields['groups'])) {
-                $this->groups = $fields['groups'];
+                $this->groups = array();
+                foreach ($fields['groups'] as $group) {
+                    if (!is_array($group)) {
+                        $group = array(
+                            'group' => $group,
+                        );
+                    }
+                    $this->groups[] = $group;
+                }
             }
             if (isset($fields['contentObjectName'])) {
                 $this->contentObjectName = $fields['contentObjectName'];
+            }
+            if (isset($fields['urlAliasName'])) {
+                $this->urlAliasName = $fields['urlAliasName'];
             }
             if (isset($fields['isContainer'])) {
                 $this->isContainer = $fields['isContainer'];
@@ -94,17 +124,45 @@ class ContentType
             if (isset($fields['version'])) {
                 $this->version = $fields['version'];
             }
-            if (isset($fields['sortField'])) {
-                $this->sortField = $fields['sortField'];
-            }
-            if (isset($fields['sortOrder'])) {
-                $this->sortOrder = $fields['sortOrder'];
+            // Sorting is specified as a single string (Django style) or as two separate fields.
+            if (isset($fields['sortBy'])) {
+                $sortBy = $fields['sortBy'];
+                list($sortField, $sortOrder) = self::decodeSortBy($fields['sortBy']);
+                $this->sortField = $sortField;
+                $this->sortOrder = $sortOrder;
+            } else {
+                if (isset($fields['sortField'])) {
+                    $this->sortField = $fields['sortField'];
+                }
+                if (isset($fields['sortOrder'])) {
+                    $this->sortOrder = $fields['sortOrder'];
+                }
             }
             if (isset($fields['description'])) {
                 $this->description = $fields['description'];
             }
+            if (isset($fields['translations'])) {
+                foreach ($fields['translations'] as $language => $translation) {
+                    $this->addTranslation($language, $translation);
+                }
+            }
         }
         return $this;
+    }
+
+    /**
+     * Checks if the content class exists and returns the ContentType for it.
+     * If the class does not exist returns null or the default value.
+     *
+     * @return ContentType or null
+     */
+    public static function get($identifier, $default=null)
+    {
+        $type = new ContentType($identifier);
+        if (!$type->exists()) {
+            return $default;
+        }
+        return $type;
     }
 
     /**
@@ -117,6 +175,42 @@ class ContentType
     {
         $this->getContentClass(false);
         return $this->_contentClass !== null;
+    }
+
+    /**
+     * Make a sort-by string out of the sort field and sort order integers
+     * stored on the content class.
+     */
+    public static function encodeSortBy($field, $order)
+    {
+        $sortId = eZContentObjectTreeNode::sortFieldName($field);
+        if (!$sortId) {
+            $sortId = (string)$field;
+        }
+        if (!$order) {
+            $sortId = "-" . $sortId;
+        }
+        return $sortId;
+    }
+
+    /**
+     * Decode a sort-by string into the field and order, returns an array
+     * with fieldId and order.
+     * 
+     * @return array
+     */
+    public static function decodeSortBy($sortBy)
+    {
+        $order = 1;
+        if (substr($sortBy, 0, 1) == '-') {
+            $order = 0;
+            $sortBy = substr($sortBy, 1);
+        }
+        $sortId = eZContentObjectTreeNode::sortFieldID($sortBy);
+        if ($sortId === null) {
+            throw new ValueError("Unknown sort field $sortBy");
+        }
+        return array($sortId, $order);
     }
 
     /**
@@ -135,11 +229,11 @@ class ContentType
         if (isset($this->attributesRemove[$identifier])) {
             return false;
         }
-        if (isset($this->attributesNew[$identifier]) || isset($this->attributes[$identifier])) {
+        if (isset($this->attributesNew[$identifier]) || isset($this->_attributes[$identifier])) {
             return true;
         }
         $this->loadAttributeMap();
-        return isset($this->attributes[$identifier]);
+        return isset($this->_attributes[$identifier]);
     }
 
     /**
@@ -157,7 +251,7 @@ class ContentType
             $idText = $this->identifierText();
             throw new ObjectDoesNotExist("$idText does not have attribute with identifier: $identifier");
         }
-        $attribute = $this->attributes[$identifier];
+        $attribute = $this->_attributes[$identifier];
         $existingType = $attribute->attribute('data_type_string');
         if ($existingType != $type) {
             throw new TypeError("$idText and attribute with identifier: $identifier has the wrong type $existingType, expected $type");
@@ -184,7 +278,7 @@ class ContentType
             }
             return $attr;
         }
-        return $this->attributes[$identifier];
+        return $this->_attributes[$identifier];
     }
 
     /**
@@ -203,6 +297,18 @@ class ContentType
      */
     public function resetPending()
     {
+        $this->name = null;
+        $this->created = null;
+        $this->contentObjectName = null;
+        $this->urlAliasName = null;
+        $this->isContainer = null;
+        $this->alwaysAvailable = null;
+        $this->sortField = null;
+        $this->sortOrder = null;
+        $this->groups = array();
+        $this->description = null;
+        $this->translations = array();
+
         $this->attributesNew = array();
         $this->attributesRemove = array();
         $this->attributesChange = array();
@@ -221,6 +327,7 @@ class ContentType
         $fields = array(
             'name' => $this->name,
             'contentobject_name' => $this->contentObjectName,
+            'url_alias_name' => $this->urlAliasName,
             'identifier' => $this->identifier,
             'is_container' => $this->isContainer,
             'always_available' => $this->alwaysAvailable,
@@ -255,10 +362,21 @@ class ContentType
         }
         $language = $this->language;
         $this->_contentClass = eZContentClass::create(false, $fields, $language);
+        $this->_contentClass->setName($this->name, $language);
         if ($this->description !== null) {
-            $this->_contentClass->setDescription($this->description);
+            $this->_contentClass->setDescription($this->description, $language);
         }
         $this->_contentClass->store();
+
+        $isDirty = false;
+        if ($this->created) {
+            $created = $this->created;
+            if ($created instanceof \DateTime) {
+                $created = $created->getTimestamp();
+            }
+            $this->_contentClass->setAttribute('created', $created);
+            $isDirty = true;
+        }
 
         foreach ($this->attributesNew as $attr) {
             $this->createAttribute($attr);
@@ -266,33 +384,29 @@ class ContentType
         $this->attributesNew = array();
         $this->attributesRemove = array();
 
-        if ($this->groups) {
-            foreach ($this->groups as $idx => $group) {
-                if ($group instanceof \eZContentClassClassGroup) {
-                    continue;
-                } elseif ($group instanceof \eZContentClassGroup) {
-                } elseif (is_numeric($group)) {
-                    $group = \eZContentClassGroup::fetch($group);
-                    if (!$group) {
-                        throw new ObjectDoesNotExist("Could not fetch eZ Content Class Group with ID '$group'");
-                    }
-                } else {
-                    $group = \eZContentClassGroup::fetchByName($group);
-                    if (!$group) {
-                        throw new ObjectDoesNotExist("Could not fetch eZ Content Class Group with name '$group'");
-                    }
-                }
-
-                $relation = \eZContentClassClassGroup::create(
-                    $this->_contentClass->attribute('id'), $this->_contentClass->attribute('version'),
-                    $group->attribute('id'), $group->attribute('name')
-                );
-                $relation->store();
-                $this->groups[$idx] = $relation;
-            }
-        }
+        $this->updateGroupAssignment();
 
         $this->isAttributeMapLoaded = true;
+
+        // Translate content if needed
+        if ($this->translations) {
+            $translations = $this->translations;
+            foreach ($translations as $language => $translation) {
+                if (isset($translation['remove']) && $translation['remove']) {
+                    $this->deleteTranslation($language);
+                } else {
+                    $this->createTranslation($language, $translation);
+                }
+            }
+            // Store class again to update translation data
+            $isDirty = true;
+        }
+
+        if ($isDirty) {
+            $this->_contentClass->store();
+        }
+
+        $this->resetPending();
 
         return $this->_contentClass;
     }
@@ -332,8 +446,7 @@ class ContentType
             $this->_contentClass->remove(true, $this->version);
             $this->_contentClass = null;
             $this->isAttributeMapLoaded = false;
-            $this->attributesNew = array();
-            $this->attributesRemove = array();
+            $this->resetPending();
             return true;
         }
         return false;
@@ -347,29 +460,101 @@ class ContentType
     public function update()
     {
         $contentClass = $this->getContentClass();
+        $isDirty = false;
 
         foreach ($this->attributesNew as $attrData) {
             $attr = $this->createAttribute($attrData);
-            $this->attributes[$attr->identifier] = $attr;
+            $this->_attributes[$attr->identifier] = $attr;
         }
         foreach ($this->attributesRemove as $identifier => $attrData) {
             $classAttribute = $contentClass->fetchAttributeByIdentifier($identifier);
             $classAttribute->removeThis();
-            unset($this->attributes[$identifier]);
+            unset($this->_attributes[$identifier]);
         }
         $this->attributesNew = array();
         $this->attributesRemove = array();
+
+        // Translate content if needed
+        if ($this->translations) {
+            $translations = $this->translations;
+            foreach ($translations as $language => $translation) {
+                if (isset($translation['remove']) && $translation['remove']) {
+                    $this->deleteTranslation($language);
+                } else {
+                    $this->createTranslation($language, $translation);
+                }
+            }
+        }
+
+        $this->updateGroupAssignment();
+
+        if ($this->name !== null) {
+            $contentClass->setName($this->name, $this->language);
+            $isDirty = true;
+        }
+        if ($this->description !== null) {
+            $contentClass->setDescription($this->description, $this->language);
+        }
+        if ($this->created) {
+            $created = $this->created;
+            if ($created instanceof DateTime) {
+                $created = $created->getTimestamp();
+            }
+            $contentClass->setAttribute('created', $created);
+            $isDirty = true;
+        }
+        if ($this->contentObjectName !== null) {
+            $contentClass->setAttribute('content_object_name', $this->contentObjectName);
+            $isDirty = true;
+        }
+        if ($this->urlAliasName !== null) {
+            $contentClass->setAttribute('url_alias_name', $this->urlAliasName);
+            $isDirty = true;
+        }
+        if ($this->isContainer !== null) {
+            $contentClass->setAttribute('isContainer', $this->isContainer);
+            $isDirty = true;
+        }
+        if ($this->alwaysAvailable !== null) {
+            $contentClass->setAttribute('always_available', $this->alwaysAvailable);
+            $isDirty = true;
+        }
+        if ($this->sortField !== null) {
+            $contentClass->setAttribute('sort_field', $this->sortField);
+            $isDirty = true;
+        }
+        if ($this->sortOrder !== null) {
+            $contentClass->setAttribute('sort_order', $this->sortOrder);
+            $isDirty = true;
+        }
+
+        $this->sortField = null;
+        $this->sortOrder = null;
+        $this->groups = array();
+        $this->translations = array();
+
+        if ($isDirty) {
+            $contentClass->store();
+        }
+
+        $this->resetPending();
+
         return $this;
     }
 
     /**
      * Saves the changes to class and attributes back to database.
+     * If the class exists the data is update, if not it creates new class.
      * 
      * @return self
      */
     public function save()
     {
-        return $this->update();
+        if ($this->exists()) {
+            return $this->update();
+        } else {
+            return $this->create();
+        }
     }
 
     /**
@@ -469,6 +654,8 @@ class ContentType
     /**
      * Creates the class-attribute in the DB and updates the internal attribute map.
      * $attr is either an array with key/value for the attribute or an ContentObjectAttribute.
+     * 
+     * @return ContentTypeAttribute
      */
     public function createAttribute($attr)
     {
@@ -476,7 +663,7 @@ class ContentType
             $attr = new ContentTypeAttribute($attr['identifier'], $attr['type'], $attr['name'], $attr);
         }
         $classAttribute = $attr->create($this->_contentClass);
-        $this->attributes[$classAttribute->attribute('identifier')] = $classAttribute;
+        $this->_attributes[$classAttribute->attribute('identifier')] = $attr;
         return $attr;
     }
 
@@ -503,6 +690,268 @@ class ContentType
     }
 
     /**
+     * Schedules addition of content-class to specified class-group, if the group assignment already exists it will
+     * not be added again.
+     * If $group is an array it is assumed to contain the 'group' key.
+     * 
+     * Calling create(), update() or save() executes the scheduled change.
+     * 
+     * @param $group Group to add to, either numeric ID, string (for name) or a eZContentClassGroup instance.
+     * @return self;
+     */
+    public function addToGroup($group)
+    {
+        if (!is_array($group)) {
+            $group = array(
+                'group' => $group,
+            );
+        }
+        $this->groups[] = $group;
+        return $this;
+    }
+
+    /**
+     * Schedules removal of content-class from specified class-group, if the group assignment does not exist
+     * nothing happens.
+     * 
+     * Calling create(), update() or save() executes the scheduled change.
+     * 
+     * @param $group Group to remove from, either numeric ID, string (for name) or a eZContentClassGroup instance.
+     * @return self;
+     */
+    public function removeFromGroup($group)
+    {
+        $this->groups[] = array(
+            'group' => $group,
+            'remove' => true,
+        );
+        return $this;
+    }
+
+    /**
+     * Schedules adding of content-class to specified class-group, any existing assignments will be removed.
+     * 
+     * Calling create(), update() or save() executes the scheduled change.
+     * 
+     * @param $group Group to add to, either numeric ID, string (for name) or a eZContentClassGroup instance.
+     * @return self;
+     */
+    public function setGroups($groups)
+    {
+        $this->groupReset = true;
+        $this->groups[] = array();
+        foreach ($groups as $group) {
+            if (!is_array($group)) {
+                $group = array(
+                    'group' => $group,
+                );
+            }
+            $this->groups[] = $group;
+        }
+        return $this;
+    }
+
+    /**
+     * Returns an array of current active group assignments. The array is in the same
+     * format as used by setGroups().
+     * 
+     * e.g.
+     * @code
+     * $type->currentGroupAssignments();
+     * // array(
+     * //   array(
+     * //     'group' => 'Content',
+     * //   ),
+     * // )
+     * @endcode
+     */
+    public function currentGroupAssignments()
+    {
+        $groups = array();
+        foreach ($this->contentClass->fetchGroupList() as $groupAssignment) {
+            $groups[] = array(
+                'group' => $groupAssignment->attribute('group_name'),
+            );
+        }
+        return $groups;
+    }
+
+    /**
+     * Creates the content-class group named $name if it does not already exist.
+     */
+    public static function createGroup($name)
+    {
+        if (eZContentClassGroup::fetchByName($name, false)) {
+            return;
+        }
+        $group = eZContentClassGroup::create();
+        $group->setAttribute('name', $name);
+        $group->store();
+    }
+
+    /**
+     * Deletes the content-class group named $name if exist. Any group assignments
+     * are removed.
+     */
+    public static function deleteGroup($name)
+    {
+        $group = eZContentClassGroup::fetchByName($name);
+        if (!$group) {
+            return;
+        }
+        eZContentClassClassGroup::removeGroupMembers($group->attribute('id'));
+    }
+
+    /**
+     * Updates class-group assignment by creating/removing the class from selected groups.
+     */
+    protected function updateGroupAssignment()
+    {
+        // If there is nothing to do an no reset is needed simply return
+        if (!$this->groups && !$this->groupReset) {
+            return;
+        }
+
+        $classId = $this->contentClass->attribute('id');
+        $version = $this->contentClass->attribute('version');
+        if ($this->groupReset) {
+            // Removing existing group assignments before adding new ones
+            eZContentClassClassGroup::removeClassMembers($classId, $version);
+        }
+        foreach ($this->groups as $idx => $group) {
+            if (is_array($group)) {
+                $remove = isset($group['remove']) ? $group['remove'] : false;
+                if (!isset($group['group'])) {
+                    throw new ValueError("Group assignment was specified with an array but the 'group' entry is missing");
+                }
+                $group = $group['group'];
+            }
+            if ($group instanceof eZContentClassClassGroup) {
+                continue;
+            } elseif ($group instanceof \eZContentClassGroup) {
+            } elseif (is_numeric($group)) {
+                $group = \eZContentClassGroup::fetch($group);
+                if (!$group) {
+                    throw new ObjectDoesNotExist("Could not fetch eZ Content Class Group with ID '$group'");
+                }
+            } else {
+                $group = \eZContentClassGroup::fetchByName($group);
+                if (!$group) {
+                    throw new ObjectDoesNotExist("Could not fetch eZ Content Class Group with name '$group'");
+                }
+            }
+            $groupId = $group->attribute('id');
+
+            if ($remove) {
+                eZContentClassClassGroup::removeGroup(
+                    $classId, $version, $groupId
+                );
+            } else {
+                if (!eZContentClassClassGroup::classInGroup($classId, $version, $groupId)) {
+                    $group->appendClass($this->contentClass);
+                }
+            }
+        }
+        $this->groupReset = false;
+        $this->groups = array();
+    }
+
+    /**
+     * Add/update a translation of the content-class and its attributes.
+     * 
+     * The translation will be applied on create(), update()/save().
+     * 
+     * @return self
+     */
+    public function addTranslation($language, $data)
+    {
+        $translation = array();
+        if (isset($data['name'])) {
+            $translation['name'] = $data['name'];
+        }
+        if (isset($data['description'])) {
+            $translation['description'] = $data['description'];
+        }
+        if (isset($data['attributes'])) {
+            foreach ($data['attributes'] as $identifier => $attributeData) {
+                $attributeTranslation = array();
+                if (isset($attributeData['name'])) {
+                    $attributeTranslation['name'] = $attributeData['name'];
+                }
+                if (isset($attributeData['description'])) {
+                    $attributeTranslation['description'] = $attributeData['description'];
+                }
+                $translation['attributes'][$identifier] = $attributeTranslation;
+            }
+        }
+        $this->translations[$language] = $translation;
+        return $this;
+    }
+
+    /**
+     * Remove a translation from the content-class and its attributes.
+     * 
+     * The translation will be removed on update()/save().
+     * 
+     * @return self
+     */
+    public function removeTranslation($language)
+    {
+        $this->translations[$language] = array(
+            'remove' => true,
+        );
+        return $this;
+    }
+
+    /**
+     * Reset a scheduled translation change from the content-class.
+     * 
+     * @return self
+     */
+    public function resetTranslation($language)
+    {
+        unset($this->translations[$language]);
+        return $this;
+    }
+
+    /**
+     * Create/updates a translation on the content-class.
+     * 
+     * e.g.
+     * $type->createTranslation('nor-NO');
+     */
+    public function createTranslation($language, $translation)
+    {
+        $contentClass = $this->contentClass;
+        if (isset($translation['name'])) {
+            $contentClass->setName($translation['name'], $language);
+        }
+        if (isset($translation['description'])) {
+            $contentClass->setDescription($translation['description'], $language);
+        }
+        if (isset($translation['attributes'])) {
+            foreach ($translation['attributes'] as $identifier => $attributeTranslation) {
+                $attribute = $this->getAttribute($identifier);
+                $attribute->createTranslation($language, $attributeTranslation);
+            }
+        }
+        unset($this->translations[$language]);
+    }
+
+    /**
+     * Deletes a translation from the content-class and its attributes.
+     * 
+     * e.g.
+     * $type->deleteTranslation('nor-NO');
+     */
+    public function deleteTranslation($language)
+    {
+        $contentClass = $this->contentClass;
+        $contentClass->removeTranslation($language);
+        unset($this->translations[$language]);
+    }
+
+    /**
      * Returns dynamic properties
      * 
      * - contentClass - Returns the content-class this object refers to.
@@ -511,8 +960,11 @@ class ContentType
      */
     public function __get($name)
     {
-        if ($name == "contentClass") {
+        if ($name === "contentClass") {
             return $this->getContentClass();
+        } else if ($name === "attributes") {
+            $this->loadAttributeMap();
+            return $this->_attributes;
         }
         throw Exception("Property $name does not exist");
     }
@@ -589,9 +1041,9 @@ class ContentType
         $this->getContentClass();
         $dataMap = $this->_contentClass->dataMap();
         foreach ($dataMap as $identifier => $classAttribute) {
-            $attr = new ContentTypeAttribute($attr->attribute('identifier'), $attr->attribute('data_type_string'), $attr->attribute('name'));
+            $attr = new ContentTypeAttribute($classAttribute->attribute('identifier'), $classAttribute->attribute('data_type_string'), $classAttribute->attribute('name'));
             $attr->classAttribute = $classAttribute;
-            $this->attributes[$identifier] = $attr;
+            $this->_attributes[$identifier] = $attr;
         }
         $this->isAttributeMapLoaded = true;
     }

@@ -134,6 +134,20 @@ class ContentTypeAttribute
         return $xmlObj->asXML();
     }
 
+    /**
+     * Sets multiple fields on a content-class attribute, the fields which are supported
+     * depends on the data-type used. Some data-type has special handling which converts
+     * easy to use names/values from the eZ specific ones.
+     * 
+     * e.g. to set ezstring fields:
+     * @code
+     * $fields = array(
+     *     'max' => 50,
+     *     'default' => 'Foo',
+     * );
+     * setAttributeFields($fields, $content, $contentClass)
+     * @endcode
+     */
     public function setAttributeFields(&$fields, &$content, $contentClass)
     {
         $type = $this->type;
@@ -199,6 +213,140 @@ class ContentTypeAttribute
             // - ezobjectrelationlist
             $content = $value;
         }
+    }
+
+    /**
+     * Returns fields for attribute which can be exported.
+     * 
+     * If there are no fields it returns null.
+     * 
+     * For instance ezstring returns:
+     * @code
+     * array(
+     *     'max' => 100,
+     *     'default' => '',
+     * );
+     * @endcode
+     */
+    public function attributeFields()
+    {
+        $type = $this->type;
+        $value = $this->value;
+        $attribute = $this->classAttribute;
+
+        // Special cases for datatypes which does not use the generic class-content
+        // value to initialize the attribute.
+        if ($type == 'ezstring') {
+            return array(
+                'max' => $attribute->attribute('data_int1'),
+                'default' => $attribute->attribute('data_text1'),
+            );
+        } else if ($type == 'ezboolean') {
+            return array(
+                'default' => $attribute->attribute('data_int3') ? true : false,
+            );
+        } else if ($type == 'eztext') {
+            return array(
+                'columns' => $attribute->attribute('data_int1'),
+            );
+        } else if ($type == 'ezxmltext') {
+            return array(
+                'columns' => $attribute->attribute('data_int1'),
+                'tag_preset' => $attribute->attribute('data_text2'),
+            );
+        } else if ($type == 'ezimage') {
+            return array(
+                'max_file_size' => $attribute->attribute('data_int1'),
+            );
+        } else if ($type == 'ezinteger') {
+            return array(
+                'min' => $attribute->attribute('data_int1'),
+                'max' => $attribute->attribute('data_int2'),
+                'default' => $attribute->attribute('data_int3'),
+            );
+        } else if ($type == 'ezurl') {
+            return array(
+                'default' => $attribute->attribute('data_text1'),
+            );
+        } else if ($type == 'ezselection') {
+            $fields = $attribute->content();
+            $fields['is_multiselect'] = (bool)$fields['is_multiselect'];
+            return $fields;
+        } else {
+            // Let the datatype set the values using class-content value
+            // This requires that the datatype actually supports this
+            // data-types known to work this are:
+            // - ezobjectrelation
+            // - ezobjectrelationlist
+            // throw new \Exception("Unsupported data-type $type, cannot export fields");
+            return $attribute->content();
+        }
+    }
+
+    /**
+     * Returns an array of fields which supports translation on the class attribute.
+     * If there are no translatable fields it returns null.
+     * 
+     * e.g.
+     * @code
+     * array(
+     *    'data_text' => 'Some text',
+     * )
+     * @endcode
+     */
+    public function attributeTranslatableFields($language = null)
+    {
+        $type = $this->type;
+        $attribute = $this->classAttribute;
+
+        // Special handling of known data-types, most of them does not have any translatable fields.
+        if ($type == 'ezstring') {
+        } else if ($type == 'ezboolean') {
+        } else if ($type == 'eztext') {
+        } else if ($type == 'ezxmltext') {
+        } else if ($type == 'ezimage') {
+        } else if ($type == 'ezinteger') {
+        } else if ($type == 'ezurl') {
+        } else if ($type == 'ezselection') {
+        } else {
+            // date_text supports translation on content-class attribute, if it has a value we export it
+            $data = $attribute->dataTextI18n($language === null ? $this->language : $language);
+            if ($data) {
+                return array(
+                    'data_text' => $data,
+                );
+            }
+        }
+    }
+
+    /**
+     * Creates/updates a translation for the attribute.
+     * 
+     * The following translations can be set.
+     * - name - Name of attribute
+     * - description - Description for attribute
+     * - data_text - Data text for data-type, depends on the type if it is used.
+     */
+    public function createTranslation($language, $translation)
+    {
+        $classAttribute = $this->classAttribute;
+        $changed = false;
+        if (isset($translation['name'])) {
+            $classAttribute->setName($translation['name'], $language);
+            $changed = true;
+        }
+        if (isset($translation['description'])) {
+            $classAttribute->setDescription($translation['description'], $language);
+            $changed = true;
+        }
+        if (isset($translation['data_text'])) {
+            $classAttribute->setDataTextI18n($translation['data_text'], $language);
+            $changed = true;
+        }
+        if ($changed) {
+            $classAttribute->store();
+        }
+        // TODO: Support specific datatypes or a plugin system
     }
 
     /**

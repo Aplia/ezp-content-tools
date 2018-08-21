@@ -23,17 +23,22 @@ $type = new Aplia\Content\ContentType('folder', 'Folder', array(
     'contentObjectName' => '<title>',
     'alwaysAvailable' => false,
     'description' => 'Container for other content objects',
+    'sortBy' => 'name',
 ))
 ->addAttribute('ezstring', 'title', 'Title');
 
 // Create the content-class in the database
 $type->create();
-
 ```
+
+`sortBy` is a special property which should contain a string
+with the identifier of the field to sort-by as specified by
+`eZContentObjectTreeNode`, to reverse sorting prepend a dash.
+e.g. `name` and `-name`.
 
 Each call to `addAttribute` creates a new `ContentTypeAttribute`
 instance which will be created in eZ publish when
-`ContentType::create` is called.
+`create()`, `update()` or `save()` is called.
 An attribute mainly consists of the data-type, identifier and name.
 In addition a fourth parameter may be set which is an array with
 additional named parameters.
@@ -53,6 +58,84 @@ This schedules the attribute to be removed on the next call to `save()`.
 
 There are also methods for checking for attribute existance and fetching attribute object. (`hasAttribute()`
 and `classAttribute()`)
+
+To remove a class use `remove()`, just check if it `exists()` first.
+
+For easy access to content-class and attributs use the properties `contentClass` and `attributes`, these
+properties will lazy-load the values. Note they require that content-class exists.
+
+## Groups
+
+Class-groups can be managed using `ContentType`. To create or delete groups use `ContentType::createGroup`
+and `ContentType::deleteGroup`.
+
+For instance:
+```
+ContentType::createGroup('Sections');
+```
+
+Assigning a class to a group is done using `addToGroup()`, `removeFromGroup()` and `setGroups()`. These
+schedules changes which are written on the next sync. If the group assignment is present (added/removed)
+nothing changes.
+
+For instance:
+```
+$type
+    ->addToGroup('Sections')
+    ->removeFromGroup('Content')
+    ->save();
+```
+
+Group assignment may also be specified in the `set()` call by using `groups` key entry.
+
+For instance:
+```
+$type
+    ->set(array(
+        'groups' => array('Sections'),
+    ));
+    ->save();
+```
+
+Groups are either specified by ID, name or a `eZContentClassGroup` object. As there is no persistent ID
+for groups it is often the best to use names.
+
+## Translations
+
+Some fields of content-classes and their attributs may be translated, this is done by using the
+`addTranslation()` and `removeTranslation()`.
+
+The following content-class fields may be translated:
+- name
+- description
+
+The following content-class attribute fields may be translated:
+- name
+- description
+- data_text
+
+For instance:
+```
+$type
+    ->addTranslation(
+        'nor-NO',
+        array(
+            'name' => 'Seksjon',
+            'description' => 'Seksjonssystem',
+            'attributes' => array(
+                'title' => array(
+                    'name' => 'Tittel',
+                )
+            ),
+        )
+    )
+    ->save();
+```
+
+For direct manipulation there is also `createTranslation()` and `deleteTranslation()`.
+
+There's currently no support for translating custom content of data-types, this could later
+be solved by using a plugin system.
 
 ## Data-Types
 
