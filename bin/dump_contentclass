@@ -1,0 +1,228 @@
+#!/usr/bin/env php
+<?php
+use Uia\Support\Arr;
+use \eZCLI;
+use \eZScript;
+use Aplia\Content\ContentType;
+
+@include_once 'config.php';
+require_once 'autoload.php';
+
+set_time_limit(0);
+
+$cli = \eZCLI::instance();
+$script = \eZScript::instance(
+    array(
+        'description' =>
+            "Export content-class definition in various formats",
+        'use-session' => false,
+        'use-modules' => true,
+        'use-extensions' => true,
+    )
+);
+$script->startup();
+$options = $script->getOptions("[php-style:][preamble][delete-existing]", "", array(
+));
+$identifiers = Arr::get($options, 'arguments');
+$phpStyle = Arr::get($options, 'php-style');
+$preamble = Arr::get($options, 'preamble', false);
+$deleteExisting = Arr::get($options, 'delete-existing', false);
+if (!$phpStyle) {
+    $phpStyle = 'migrate';
+}
+if (!in_array($phpStyle,  array('model', 'migrate'))) {
+    $script->shutdown(1, "Unsupported --php-style option $phpStyle");
+}
+$script->initialize();
+
+function underscoreToCamelCase($string)
+{
+    $str = str_replace(' ', '', ucwords(str_replace('_', " ", $string)));
+    $str = lcfirst($str);
+    return $str;
+}
+
+function indentTextLines($text, $indentation=4, $first=true)
+{
+    $indentText = str_repeat(" ", $indentation);
+    $lines = preg_split("/\r\n|\r|\n/", $text);
+    if (!$first) {
+        $firstLine = array_shift($lines);
+    }
+    $lines = array_map(function ($item) use ($indentText) { return $indentText . $item; }, $lines);
+    if (!$first) {
+        array_unshift($lines, $firstLine);
+    }
+    return implode("\n", $lines);
+}
+
+if ($preamble) {
+    // TODO: Support creation of code to login as a specific user
+echo <<<'EOT'
+<?php
+require 'config.php';
+require 'autoload.php';
+
+$cli = \eZCLI::instance();
+$script = \eZScript::instance(
+    array(
+        'description' =>
+            "Defines content-class definitions",
+        'use-session' => false,
+        'use-modules' => true,
+        'use-extensions' => true,
+    )
+);
+$script->startup();
+$options = $script->getOptions("", "", array());
+$script->initialize();
+
+
+$db = \eZDB::instance();
+$db->begin();
+
+
+EOT;
+}
+
+foreach ($identifiers as $identifier) {
+    $type = ContentType::get($identifier);
+    if (!$type) {
+        $cli->output("Unknown content-class $identifier");
+        continue;
+    }
+    // First fetch class to figure out languages and main language
+    $contentClass = $type->contentClass;
+    $identifierRepr = var_export($identifier, true);
+    $languages = $contentClass->languages();
+    $mainLanguage = array_shift($languages);
+    $mainLocale = $mainLanguage->attribute('locale');
+
+    $description = $contentClass->description($mainLocale);
+    $created = new DateTime("@" . $contentClass->attribute('created'));
+    $createdDateText = $created->format(DateTime::RFC3339);
+    $fields = array(
+        'name' => $contentClass->name($mainLocale),
+        'language' => $mainLocale,
+        'description' => $description,
+        'contentObjectName' => $contentClass->attribute('contentobject_name'),
+        'urlAliasName' => $contentClass->attribute('url_alias_name'),
+        'created' => new DateTime($createdDateText),
+        'uuid' => $contentClass->attribute('remote_id'),
+        'isContainer' => $contentClass->attribute('is_container') ? true : false,
+        'alwaysAvailable' => $contentClass->attribute('always_available') ? true : false,
+        'sortBy' => ContentType::encodeSortBy($contentClass->attribute('sort_field'), $contentClass->attribute('sort_order')),
+    );
+    $fieldsRepr = indentTextLines(var_export($fields, true), 8, false);
+    $typeVar = "\$" . underscoreToCamelCase($identifier . "_class");
+    $attributes = $type->attributes;
+    $languageNames = array($mainLanguage->attribute('locale'));
+    foreach ($languages as $language) {
+        $languageNames[] = $language->attribute('locale');
+    }
+    $languageNames = array_unique($languageNames);
+    if ($phpStyle == 'migrate') {
+        echo "// Content-class '$identifier': ", count($attributes), " attributes, languages: ", implode(", ", $languageNames), "\n";
+        echo "$typeVar = new \Aplia\Content\ContentType($identifierRepr);\n";
+        if ($deleteExisting) {
+            echo "// Remove existing class if it exists\n",
+                 "if (${typeVar}->exists()) {\n",
+                 "    ${typeVar}->remove();\n",
+                 "}";
+        } else {
+            echo "// Uncomment to delete existing class\n",
+                 "// if (${typeVar}->exists()) {\n",
+                 "//     ${typeVar}->remove();\n",
+                 "// }";
+       }
+        echo "// Set properties\n",
+             "${typeVar}\n",
+             "    ->set(\n",
+             "        $fieldsRepr\n",
+             "    )";
+        echo "\n    // Group assignment";
+        foreach ($type->currentGroupAssignments() as $group) {
+            $groupNameRepr = var_export($group['group'], true);
+            echo "\n    ->addToGroup(${groupNameRepr})";
+        }
+        echo "\n    // Define attributes";
+        foreach ($attributes as $attribute) {
+            $classAttribute = $attribute->classAttribute;
+            $attributeTypeRepr = var_export($classAttribute->attribute('data_type_string'), true);
+            $attributeIdentifier = $classAttribute->attribute('identifier');
+            $attributeIdentifierRepr = var_export($attributeIdentifier, true);
+            $attributeNameRepr = var_export($classAttribute->name($mainLocale), true);
+            $attributeFields = array(
+                'identifier' => $attributeIdentifier,
+                'name' => $classAttribute->name($mainLocale),
+            );
+            $attributeCustomFields = $attribute->attributeFields();
+            if ($attributeCustomFields !== null) {
+                $attributeFields['content'] = $attributeCustomFields;
+            }
+            $attributeFields['is_searchable'] = (bool)$classAttribute->attribute('is_searchable');
+            $attributeFields['is_required'] = (bool)$classAttribute->attribute('is_required');
+            $attributeFields['can_translate'] = (bool)$classAttribute->attribute('can_translate');
+            if ($classAttribute->attribute('is_information_collector')) {
+                $attributeFields['is_information_collector'] = true;
+            }
+            $attributeFields['attributes'][$attributeIdentifier] = $attributeFields;
+            $attributeFieldsRepr = indentTextLines(var_export($attributeFields, true), 8, false);
+            echo "\n    ->addAttribute(\n",
+            "        ${attributeTypeRepr},\n",
+            "        ${attributeFieldsRepr}\n",
+            "    )";
+       }
+       if ($languages) {
+           echo "\n    // Translate content";
+       }
+       foreach ($languages as $language) {
+            $translatedLocale = $language->attribute('locale');
+            $translatedType = new ContentType($identifier);
+            // Create type with different language to get different attributes
+            $translatedType->set(array(
+                'language' => $language,
+            ));
+            $localeRepr = var_export($language->attribute('locale'), true);
+            // $translatedNameRepr = var_export($contentClass->name($translatedLocale), true);
+            $translatedFields = array(
+                'name' => $contentClass->name($translatedLocale),
+                'description' => $contentClass->description($translatedLocale),
+                'attributes' => array(),
+            );
+            foreach ($type->attributes as $attribute) {
+                $classAttribute = $attribute->classAttribute;
+                if (!$classAttribute->attribute('can_translate')) {
+                    continue;
+                }
+                $attributeIdentifier = $classAttribute->attribute('identifier');
+                $attributeFields = $attribute->attributeTranslatableFields($translatedLocale);
+                $attributeTranslation = array(
+                    'name' => $classAttribute->name($translatedLocale),
+                    'description' => $classAttribute->description($translatedLocale),
+                );
+                if ($attributeFields !== null) {
+                    $attributeTranslation['content'] = $attributeFields;
+                }
+                $translatedFields['attributes'][$attributeIdentifier] = $attributeTranslation;
+            }
+            $translatedFieldsRepr = indentTextLines(var_export($translatedFields, true), 8, false);
+            echo "\n    ->addTranslation(\n",
+                 "        $localeRepr,\n",
+                 "        ${translatedFieldsRepr}\n",
+                 "    )";
+        }
+        echo "\n    ->create()";
+        echo ";\n";
+    }
+}
+
+if ($preamble) {
+    echo <<<'EOT'
+
+$db->commit();
+
+EOT;
+}
+
+$script->shutdown();
