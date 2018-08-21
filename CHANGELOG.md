@@ -1,6 +1,15 @@
 # Changelog
 
-Changelog for the `contentquery` package.
+Changelog for the `content-tools` package.
+
+## 1.3
+
+- Better support for managing group assignments (adding, removing) and for creating
+  new groups.
+- Support for translating content of content-classes and its attributes.
+- Support for using sort identifiers in new field sortBy.
+- New script for dumping a content-class to PHP code, can be used to aid
+  in writing migration code or import scripts.
 
 ## 1.2
 
