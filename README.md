@@ -4,7 +4,7 @@ This packages contains classes which makes it easier to work with
 content objects when it comes to creating and updating content.
 
 Whenever something is missing or an action fails it will throw
-a proper Exception, see the namespace `Aplia\Content\Exceptions'
+a proper Exception, see the namespace `Aplia\Content\Exceptions`
 for a list of possible errors.
 
 ## ContentType
@@ -433,3 +433,42 @@ vendor/bin/phinx migrate -c phinx.php
 
 To migrate eZ publish content the classes `ContentType` and `ContentObject`
 may be used inside the migrations.
+
+## Content class export
+This package has support for dumping content classes by given identifiers to a runnable script. The script can be run as a migrate-style PHP snippet.
+
+To run this script manually:
+```
+php bin/dump_contentclass [identifier ...] [php-style] [preamble] [delete-existing] [update-class-group] [update-creator-id]
+```
+
+Output goes to `stdout`, so pipe to a file to save it.
+
+### Options
+
+#### identifier
+Specify which content class identifiers to export. It supports multiple values. E.g.: `folder article`.
+
+#### php-style
+Set to migrate, to use migrate style. E.g.: `php-style=migrate`
+
+#### preamble
+Set to include boilerplate script options before the class definitions. E.g.: `preamble`.
+
+#### delete-existing
+Include this to delete the existing content classes instead of updating existing.
+
+#### update-class-group
+Use this to reset the class group on all exported classes to something of your choice. E.g.: `update-class-group=Seksjoner`.
+
+NB! Create this class group beforehand.
+
+#### update-creator-id
+Use this to set a user by object id as creator for the content classes. E.g.: `update-creator-id=14` to set creator as admin.
+(This uses `eZUser::setCurrentlyLoggedInUser()`.)
+
+### Example
+Assuming location is project root:
+```
+php vendor/aplia/content-tools/bin/dump_contentclass preamble delete-existing update-class-group=Seksjoner update-creator-id=14 news_section campaign_section logo_section > import_content_classes.php
+```

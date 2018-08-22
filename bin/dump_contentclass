@@ -21,12 +21,14 @@ $script = \eZScript::instance(
     )
 );
 $script->startup();
-$options = $script->getOptions("[php-style:][preamble][delete-existing]", "", array(
+$options = $script->getOptions("[php-style:][preamble][delete-existing][update-class-group:][update-creator-id:]", "", array(
 ));
 $identifiers = Arr::get($options, 'arguments');
 $phpStyle = Arr::get($options, 'php-style');
 $preamble = Arr::get($options, 'preamble', false);
 $deleteExisting = Arr::get($options, 'delete-existing', false);
+$updateClassGroup = Arr::get($options, 'update-class-group', false);
+$updateCreatorId = Arr::get($options, 'update-creator-id', false);
 if (!$phpStyle) {
     $phpStyle = 'migrate';
 }
@@ -57,7 +59,6 @@ function indentTextLines($text, $indentation=4, $first=true)
 }
 
 if ($preamble) {
-    // TODO: Support creation of code to login as a specific user
 echo <<<'EOT'
 <?php
 require 'config.php';
@@ -80,6 +81,20 @@ $script->initialize();
 
 $db = \eZDB::instance();
 $db->begin();
+
+
+EOT;
+}
+
+if ($updateCreatorId) {
+echo <<<'EOT'
+$userCreatorID =
+EOT;
+echo ' '.$updateCreatorId;
+echo <<<'EOT'
+;
+$user = \eZUser::fetch($userCreatorID);
+\eZUser::setCurrentlyLoggedInUser($user, $userCreatorID);
 
 
 EOT;
@@ -141,9 +156,13 @@ foreach ($identifiers as $identifier) {
              "        $fieldsRepr\n",
              "    )";
         echo "\n    // Group assignment";
-        foreach ($type->currentGroupAssignments() as $group) {
-            $groupNameRepr = var_export($group['group'], true);
-            echo "\n    ->addToGroup(${groupNameRepr})";
+        if ($updateClassGroup) {
+                echo "\n    ->addToGroup('${updateClassGroup}')";
+        } else {
+            foreach ($type->currentGroupAssignments() as $group) {
+                $groupNameRepr = var_export($group['group'], true);
+                echo "\n    ->addToGroup(${groupNameRepr})";
+            }
         }
         echo "\n    // Define attributes";
         foreach ($attributes as $attribute) {
