@@ -1,6 +1,6 @@
 #!/usr/bin/env php
 <?php
-use Uia\Support\Arr;
+use Aplia\Support\Arr;
 use \eZCLI;
 use \eZScript;
 use Aplia\Content\ContentType;

@@ -3,6 +3,12 @@
     "description": "PHP library for working with eZ publish content objects",
     "homepage": "https://bitbucket.org/aplia/library-content-tools",
     "license": "MIT",
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://packages.aplia.no/"
+        }
+    ],
     "authors": [
         {
             "name": "Aplia dev-team",
@@ -11,7 +17,8 @@
     ],
     "require": {
         "php": ">=5.3",
-        "composer/composer": ">=1.0"
+        "composer/composer": ">=1.0",
+        "aplia/support": "^1.0"
     },
     "bin": [
         "bin/dump_contentclass"
