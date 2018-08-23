@@ -12,7 +12,7 @@ class ContentExporter
     public $embedFileData = true;
     public $fileStorage = '.';
     public $startDepth = 1;
-    public $includeOwners = true;
+    public $includeOwners = false;
     public $includeEmbeds = false;
     public $includeRelations = false;
     public $classMap = array();
@@ -33,6 +33,9 @@ class ContentExporter
         if (isset($options['file_storage'])) {
             $this->fileStorage = $options['file_storage'];
             $this->embedFileData = false;
+        }
+        if (isset($options['include_owners'])) {
+            $this->includeOwners = $options['include_owners'];
         }
         if (isset($options['include_relations'])) {
             $this->includeRelations = $options['include_relations'];

@@ -21,7 +21,7 @@ $script = \eZScript::instance(
     )
 );
 $script->startup();
-$options = $script->getOptions("[format:][class:][parent-node:][depth:][exclude-parent][only-visible][file-storage:][include-relations][include-embeds]", "", array(
+$options = $script->getOptions("[format:][class:][parent-node:][depth:][exclude-parent][only-visible][file-storage:][include-relations][include-embeds][include-owners]", "", array(
     "format" => "Type of format, choose between json, ndjson and line",
     "class" => "Limit search of objects to only these type of content-classes. Comma separated list",
     "parent-node" => "Choose starting point for export, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id> or path:<alias-path>",
@@ -31,6 +31,7 @@ $options = $script->getOptions("[format:][class:][parent-node:][depth:][exclude-
     "file-storage" => "Store file content in specified folder, instead of embedding as base64 in export.",
     'include-relations' => 'Include all objects which are related in export',
     'include-embeds' => 'Include all objects which are embedded in export',
+    'include-owners' => 'Include objects for all owners',
 ));
 $script->initialize();
 
@@ -68,6 +69,10 @@ if (Arr::get($options,'include-relations')) {
 $includeEmbeds = false;
 if (Arr::get($options,'include-embeds')) {
     $includeEmbeds = true;
+}
+$includeOwners = false;
+if (Arr::get($options,'include-owners')) {
+    $includeOwners = true;
 }
 $parentNodeId = Arr::get($options, 'parent-node');
 $onlyVisible = false;
@@ -142,6 +147,7 @@ $options = array(
     'start_depth' => 0,
     'include_relations' => $includeRelations,
     'include_embeds' => $includeEmbeds,
+    'include_owners' => $includeOwners,
 );
 if ($fileStorage) {
     $options['file_storage'] = $fileStorage;
