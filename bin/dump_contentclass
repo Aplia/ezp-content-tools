@@ -221,6 +221,7 @@ if ($preamble) {
     echo <<<'EOT'
 
 $db->commit();
+$script->shutdown();
 
 EOT;
 }
