@@ -60,7 +60,6 @@ class ContentExporter
             'parent_node_id' => (int)$node->attribute('parent_node_id'),
             'uuid' => $node->remoteId(),
             'parent_node_uuid' => $parent->remoteId(),
-            'depth' => $node->attribute('depth') - $this->startDepth,
             'original_depth' => (int)$node->attribute('depth'),
             'original_path' => $path,
             'url_alias' => $node->urlAlias(),
