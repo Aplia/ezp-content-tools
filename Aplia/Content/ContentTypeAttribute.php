@@ -32,6 +32,8 @@ class ContentTypeAttribute
             }
             if (isset($fields['value'])) {
                 $this->value = $fields['value'];
+            } elseif (isset($fields['content'])) {
+                $this->value = $fields['content'];
             }
             if (isset($fields['isRequired'])) {
                 $this->isRequired = $fields['isRequired'];
@@ -126,10 +128,15 @@ class ContentTypeAttribute
     public function makeSelectionXml(array $options)
     {
         $xmlObj = new SimpleXMLElement('<?xml version="1.0" encoding="UTF-8"?><ezselection/>');
-        foreach ($options as $id => $name) {
+        foreach ($options as $id => $nameOrArray) {
             $optionXML = $xmlObj->addChild('option');
-            $optionXML->addAttribute('id', $id);
-            $optionXML->addAttribute('name', $name);
+            if (is_array($nameOrArray)) {
+                $optionXML->addAttribute('id', $nameOrArray['id']);
+                $optionXML->addAttribute('name', $nameOrArray['name']);
+            } elseif (is_string($nameOrArray)) {
+                $optionXML->addAttribute('id', $id);
+                $optionXML->addAttribute('name', $nameOrArray);
+            }
         }
         return $xmlObj->asXML();
     }
@@ -208,7 +215,7 @@ class ContentTypeAttribute
         } else {
             // Let the datatype set the values using class-content value
             // This requires that the datatype actually supports this
-            // data-types known to work this are:
+            // Data-types known to work for this are:
             // - ezobjectrelation
             // - ezobjectrelationlist
             $content = $value;
@@ -275,7 +282,7 @@ class ContentTypeAttribute
         } else {
             // Let the datatype set the values using class-content value
             // This requires that the datatype actually supports this
-            // data-types known to work this are:
+            // Data-types known to work for this are:
             // - ezobjectrelation
             // - ezobjectrelationlist
             // throw new \Exception("Unsupported data-type $type, cannot export fields");
