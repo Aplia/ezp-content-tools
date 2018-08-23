@@ -185,7 +185,6 @@ foreach ($identifiers as $identifier) {
             if ($classAttribute->attribute('is_information_collector')) {
                 $attributeFields['is_information_collector'] = true;
             }
-            $attributeFields['attributes'][$attributeIdentifier] = $attributeFields;
             $attributeFieldsRepr = indentTextLines(var_export($attributeFields, true), 8, false);
             echo "\n    ->addAttribute(\n",
             "        ${attributeTypeRepr},\n",
