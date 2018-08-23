@@ -34,7 +34,7 @@ $options = $script->getOptions("[format:][class:][parent-node:][depth:][exclude-
 ));
 $script->initialize();
 
-$supportedFormats = array('line', 'json', 'json-seq');
+$supportedFormats = array('line', 'json', 'ndjson');
 
 $classNames = Arr::get($options, 'class');
 if ($classNames) {
@@ -192,7 +192,7 @@ if ($format === "line") {
     foreach ($query as $node) {
         echo $node->attribute('name'), " - ", $node->className(), " (", $node->attribute('contentobject_id'), ")\n";
     }
-} else if ($format === "json-seq") {
+} else if ($format === "ndjson") {
     // TODO: Write content langauges that are used
     // TODO: Write sections that are used
     // TODO: Write object status that are used
