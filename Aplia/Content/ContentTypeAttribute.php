@@ -141,6 +141,64 @@ class ContentTypeAttribute
         return $xmlObj->asXML();
     }
 
+    public function selectionTypeMap($value)
+    {
+        $map = array(
+            0 => 'browse',
+            1 => 'dropdown',
+            2 => 'radio_button',
+            3 => 'checkbox',
+            4 => 'multiple_list',
+            5 => 'template_multiple',
+            6 => 'template_single'
+        );
+        $key = array_search($value, $map);
+        return $key ? $key : $value;
+    }
+
+    public function makeObjectRelationListXml($options)
+    {
+        $xmlObj = new SimpleXMLElement('<?xml version="1.0" encoding="UTF-8"?><related-objects/>');
+
+        foreach ($options as $name => $value) {
+            if ($name == "class_constraint_list") {
+                $constraints = $xmlObj->addChild('constraints');
+                foreach ($value as $index => $identifier) {
+                    $constraint = $constraints->addChild('allowed-class');
+                    $constraint->addAttribute('contentclass-identifier', $identifier);
+                }
+            } elseif ($name == 'default_placement') {
+                $contentobjectPlacement = $xmlObj->addChild('contentobject-placement');
+                $contentobjectPlacement->addAttribute('node-id', $this->relatedNodeId($value));
+            } else {
+                $child = $xmlObj->addChild($name);
+                $child->addAttribute('value', $value);
+            }
+        }
+    }
+
+    public function relatedNodeId($arrayOrNodeId)
+    {
+        $nodeId = 0;
+
+        if (is_array($arrayOrNodeId) && isset($arrayOrNodeId['uuid'])) {
+            $uuid = $arrayOrNodeId['uuid'];
+            $node = \eZContentObjectTreeNode::fetchByRemoteID($uuid, false);
+            if ($node && isset($node['node_id'])) {
+                $nodeId = $node['node_id'];
+            } else {
+                $nameErrorString = isset($arrayOrNodeId['name']) ? '(name: '.$arrayOrNodeId['name'].')' : '';
+                throw new Exception("Node for uuid $uuid $nameErrorString not defined for $this->type in $this->name");
+            }
+        } elseif (is_numeric($arrayOrNodeId)) {
+            $nodeId = $arrayOrNodeId;
+        } elseif (isset($arrayOrNodeId['node_id'])) {
+            $nodeId = $arrayOrNodeId['node_id'];
+        }
+
+        return $nodeId;
+    }
+
     /**
      * Sets multiple fields on a content-class attribute, the fields which are supported
      * depends on the data-type used. Some data-type has special handling which converts
@@ -208,10 +266,21 @@ class ContentTypeAttribute
             } else {
                 $fields['data_int1'] = "0";
             }
-
             if (isset($value['options'])) {
                 $fields['data_text5'] = $this->makeSelectionXml($value['options']);
             }
+        } else if ($type == 'ezsobjectrelation') {
+            if (isset($value['selection_type'])) {
+                $fields['data_int1'] = $this->selectionTypeMap($value['selection_type']);
+            }
+            if (isset($value['default_selection_node'])) {
+                $fields['data_int2'] = $this->relatedNodeId($value['default_selection_node']);
+            }
+            if (isset($value['fuzzy_match'])) {
+                $fields['data_int3'] = $value['fuzzy_match'];
+            }
+        } else if ($type == 'ezsobjectrelationlist') {
+            $fields['data_text5'] = $this->makeObjectRelationListXml($value);
         } else {
             // Let the datatype set the values using class-content value
             // This requires that the datatype actually supports this

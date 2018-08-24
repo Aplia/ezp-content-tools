@@ -3,6 +3,7 @@
 use Aplia\Support\Arr;
 use \eZCLI;
 use \eZScript;
+use \eZContentObjectTreeNode;
 use Aplia\Content\ContentType;
 
 @include_once 'config.php';
@@ -56,6 +57,25 @@ function indentTextLines($text, $indentation=4, $first=true)
         array_unshift($lines, $firstLine);
     }
     return implode("\n", $lines);
+}
+
+function replaceWithUuidArray(&$nodeIdOrArray)
+{
+    if (is_array($nodeIdOrArray) && isset($nodeIdOrArray['node_id'])) {
+        $nodeId = $nodeIdOrArray['node_id'];
+    } else {
+        $nodeId = $nodeIdOrArray;
+    }
+
+    $node = \eZContentObjectTreeNode::fetch($nodeId);
+
+    if ($node) {
+        $nodeIdOrArray = array(
+            'node_id' => $nodeId,
+            'uuid' => $node->remoteID(),
+            'name' => $node->attribute('name'),
+        );
+    }
 }
 
 if ($preamble) {
@@ -178,6 +198,11 @@ foreach ($identifiers as $identifier) {
             $attributeCustomFields = $attribute->attributeFields();
             if ($attributeCustomFields !== null) {
                 $attributeFields['content'] = $attributeCustomFields;
+                if (trim($attributeTypeRepr, "'") == "ezobjectrelationlist" && isset($attributeFields['content']['default_placement'])) {
+                    replaceWithUuidArray($attributeFields['content']['default_placement']);
+                } elseif (trim($attributeTypeRepr, "'") == "ezobjectrelation" && isset($attributeFields['content']['default_selection_node'])) {
+                    replaceWithUuidArray($attributeFields['content']['default_selection_node']);
+                }
             }
             $attributeFields['is_searchable'] = (bool)$classAttribute->attribute('is_searchable');
             $attributeFields['is_required'] = (bool)$classAttribute->attribute('is_required');
