@@ -385,6 +385,10 @@ class ContentExporter
     public function finalizeAttributes()
     {
         foreach ($this->objectMap as $idx => $objectData) {
+            if (!isset($objectData['attributes']) || !isset($objectData['translations'])) {
+                // In case the object entry only has locations set
+                continue;
+            }
             $class = $this->classMap[$objectData['class_identifier']];
             foreach ($objectData['attributes'] as $identifier => $attributeData) {
                 $type = $class['type_map'][$identifier];
