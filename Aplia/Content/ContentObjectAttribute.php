@@ -325,8 +325,8 @@ class ContentObjectAttribute
         if (!$content) {
             return null;
         }
-        $version = $object->currentVersion();
-        $path = $content->imagePath($attribute, $version);
+        $original = $content->imageAlias('original');
+        $path = $original['full_path'];
         return array(
             'alternative_text' => $content->attribute('alternative_text'),
             'original_filename' => $content->attribute('original_filename'),
