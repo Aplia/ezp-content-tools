@@ -126,7 +126,7 @@ class ContentObjectAttribute
         $attribute = $this->contentAttribute;
         $type = $attribute->attribute('data_type_string');
 
-        if ($type == 'ezstring' || $type == 'ezboolean' || $type == 'eztext' || $type == 'ezimage' ||
+        if ($type == 'ezstring' || $type == 'ezboolean' || $type == 'eztext' ||
             $type == 'ezinteger' || $type == 'ezurl' || $type == 'ezemail' || $type == 'ezfloat') {
             return $this->value;
         } else if ($type == 'ezbinaryfile') {

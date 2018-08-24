@@ -256,6 +256,46 @@ class ContentExporter
     }
 
     /**
+     * Adds a file entry to the export, the file is referenced by a uuid and
+     * points to a path. If the path does not exist or isn't a file no file
+     * is added.
+     * 
+     * @return true if the file was added, false otherwise
+     */
+    public function addFile($uuid, $path)
+    {
+        $file = \eZFileHandler::instance(false);
+        if ($file->isFile($path)) {
+            $this->fileMap[$uuid] = array(
+                '__type__' => 'file',
+                'original_path' => $path,
+            );
+            if ($this->embedFileData) {
+                $file->open($path, "r");
+                try {
+                    $binaryData = $file->read();
+                    $file->close();
+                } catch (\Exception $e) {
+                    $file->close();
+                    return false;
+                }
+                $this->fileMap[$uuid]['md5'] = md5($binaryData);
+                $this->fileMap[$uuid]['content_b64'] = base64_encode($binaryData);
+            } else {
+                $newPath = $this->fileStorage . '/' . $uuid;
+                if (!file_exists($this->fileStorage)) {
+                    \eZDir::mkdir($this->fileStorage, false, true);
+                }
+                \eZFileHandler::copy($path, $newPath);
+                $this->fileMap[$uuid]['path'] = $newPath;
+            }
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
      * Add all nodes in query-set to export.
      */
     public function addQuery($query) {
@@ -364,40 +404,21 @@ class ContentExporter
         }
     }
 
+    /**
+     * Finalize information about one specific attribute, can for instance add files, relations
+     * or modify data in some manner.
+     */
     public function finalizeAttribute($type, $identifier, $attributeData, $language=null)
     {
-        if ($type === 'ezbinaryfile') {
+        if ($type === 'ezbinaryfile' || $type === 'ezimage') {
             $path = $attributeData['path'];
             $uuid = sha1($path);
             if (isset($this->fileMap[$uuid])) {
                 $attributeData['uuid'] = $uuid;
                 return $attributeData;
             }
-            $file = \eZFileHandler::instance(false);
-            if ($file->isFile($path)) {
+            if ($this->addFile($uuid, $path)) {
                 $attributeData['uuid'] = $uuid;
-                $this->fileMap[$uuid] = array(
-                    '__type__' => 'file',
-                    'original_path' => $path,
-                );
-                if ($this->embedFileData) {
-                    $file->open($path, "r");
-                    try {
-                        $binaryData = $file->read();
-                        $file->close();
-                    } catch (\Exception $e) {
-                        $file->close();
-                    }
-                    $this->fileMap[$uuid]['md5'] = md5($binaryData);
-                    $this->fileMap[$uuid]['content_b64'] = base64_encode($binaryData);
-                } else {
-                    $newPath = $this->fileStorage . '/' . $uuid;
-                    if (!file_exists($this->fileStorage)) {
-                        \eZDir::mkdir($this->fileStorage, false, true);
-                    }
-                    \eZFileHandler::copy($path, $newPath);
-                    $this->fileMap[$uuid]['path'] = $newPath;
-                }
             } else {
                 $attributeData['found'] = false;
             }
