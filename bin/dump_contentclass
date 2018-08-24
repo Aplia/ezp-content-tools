@@ -83,7 +83,7 @@ function replaceWithUuidArray(&$nodeIdOrArray)
 if ($useNamespace) {
     $contentTypeClass = 'ContentType';
 } else {
-    $contentTypeClass = '\Aplia\Content\ContentType';
+    $contentTypeClass = '\\Aplia\\Content\\ContentType';
 }
 
 if ($preamble) {
@@ -178,7 +178,7 @@ foreach ($identifiers as $identifier) {
     $languageNames = array_unique($languageNames);
     if ($phpStyle == 'migrate') {
         echo "// Content-class '$identifier': ", count($attributes), " attributes, languages: ", implode(", ", $languageNames), "\n";
-        echo "$typeVar = new ${useNamespace}($identifierRepr);\n";
+        echo "$typeVar = new ${contentTypeClass}($identifierRepr);\n";
         if ($deleteExisting) {
             echo "// Remove existing class if it exists\n",
                  "if (${typeVar}->exists()) {\n",
