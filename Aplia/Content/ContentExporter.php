@@ -58,7 +58,7 @@ class ContentExporter
             $visibility = 'invisible';
         }
         $data = array(
-            '__type__' => 'contentnode',
+            '__type__' => 'ez_contentnode',
             'node_id' => (int)$node->attribute('node_id'),
             'parent_node_id' => (int)$node->attribute('parent_node_id'),
             'uuid' => $node->remoteId(),
@@ -80,7 +80,7 @@ class ContentExporter
         $publishedDate = new DateTime("@" . $contentObject->attribute('published'));
         $mainNode = $contentObject->mainNode();
         $data = array(
-            '__type__' => 'contentobject',
+            '__type__' => 'ez_contentobject',
             'object_id' => (int)$contentObject->attribute('id'),
             'uuid' => $contentObject->remoteId(),
             'owner' => null,
@@ -187,7 +187,7 @@ class ContentExporter
             return;
         }
         $data = array(
-            '__type__' => 'contentclass',
+            '__type__' => 'ez_contentclass',
             'name' => $contentClass->name(),
             // The structure only contains the minimal to allow for identifier/type matching
             'sparse' => true,
@@ -275,7 +275,7 @@ class ContentExporter
         foreach ($this->languageMap as $locale => $language) {
             $language = eZContentLanguage::fetchByLocale($locale);
             $this->languageMap[$locale] = array(
-                '__type__' => 'contentlanguage',
+                '__type__' => 'ez_contentlanguage',
                 'name' => $language->attribute('name'),
             );
             if ($language->attribute('disabled') || !$this->sparse) {
@@ -287,7 +287,7 @@ class ContentExporter
         foreach ($this->sectionMap as $sectionIdentifier => $section) {
             $section = eZSection::fetchByIdentifier($sectionIdentifier);
             $this->sectionMap[$sectionIdentifier] = array(
-                '__type__' => 'section',
+                '__type__' => 'ez_section',
                 'name' => $section->attribute('name'),
                 'navigation_part_identifier' => $section->attribute('navigation_part_identifier'),
             );
@@ -302,7 +302,7 @@ class ContentExporter
         foreach ($stateMap as $groupIdentifier => $group) {
             $group = \eZContentObjectStateGroup::fetchByIdentifier($groupIdentifier);
             $groupData = array(
-                '__type__' => 'contentstate',
+                '__type__' => 'ez_contentstate',
                 'translations' => array(),
                 'states' => array(),
             );

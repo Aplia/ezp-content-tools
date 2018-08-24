@@ -199,11 +199,6 @@ if ($format === "line") {
         echo $node->attribute('name'), " - ", $node->className(), " (", $node->attribute('contentobject_id'), ")\n";
     }
 } else if ($format === "ndjson") {
-    // TODO: Write content langauges that are used
-    // TODO: Write sections that are used
-    // TODO: Write object status that are used
-    // TODO: Write objects
-    // TODO: Write referenced files/images
     $exporter = new \Aplia\Content\ContentExporter($options);
     if ($includeParent) {
         $exporter->addNode($parentNode);
@@ -227,6 +222,7 @@ if ($format === "line") {
     $exporter->addQuery($query);
     $exporter->finalize();
     $data = array(
+        '__type__' => 'ez_content_bundle',
         'export_date' => (new \DateTime())->format(\DateTime::RFC3339),
         'export' => $exportChoices,
     );
