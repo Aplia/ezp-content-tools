@@ -21,7 +21,8 @@
         "aplia/support": "^1.0"
     },
     "bin": [
-        "bin/dump_contentclass"
+        "bin/dump_contentclass",
+        "bin/dump_content"
     ],
     "autoload": {
         "psr-4": {

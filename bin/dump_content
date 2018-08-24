@@ -1,0 +1,236 @@
+#!/usr/bin/env php
+<?php
+use Aplia\Support\Arr;
+use \eZCLI;
+use \eZScript;
+use Aplia\Content\ContentType;
+
+@include_once 'config.php';
+require_once 'autoload.php';
+
+set_time_limit(0);
+
+$cli = \eZCLI::instance();
+$script = \eZScript::instance(
+    array(
+        'description' =>
+            "Export content-objects and referenced definitions",
+        'use-session' => false,
+        'use-modules' => true,
+        'use-extensions' => true,
+    )
+);
+$script->startup();
+$options = $script->getOptions("[format:][class:][parent-node:][depth:][exclude-parent][only-visible][file-storage:][include-relations][include-embeds][include-owners]", "", array(
+    "format" => "Type of format, choose between json, ndjson and line",
+    "class" => "Limit search of objects to only these type of content-classes. Comma separated list",
+    "parent-node" => "Choose starting point for export, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id> or path:<alias-path>",
+    "depth" => "Choose how deep in the tree structure to search, defaults to 1 level. Use * for unlimited",
+    "exclude-parent" => "Exclude the parent node from the export, the result is then only the child/sub-nodes",
+    "only-visible" => "Only export visible nodes",
+    "file-storage" => "Store file content in specified folder, instead of embedding as base64 in export.",
+    'include-relations' => 'Include all objects which are related in export',
+    'include-embeds' => 'Include all objects which are embedded in export',
+    'include-owners' => 'Include objects for all owners',
+));
+$script->initialize();
+
+$supportedFormats = array('line', 'json', 'ndjson');
+
+$classNames = Arr::get($options, 'class');
+if ($classNames) {
+    $classNames = explode(",", $classNames);
+} else {
+    $classNames = null;
+}
+$depth = Arr::get($options, 'depth');
+$depthChoice = $depth;
+if (!$depth) {
+    // Default to depth 1 as it is the safest
+    $depth = 1;
+    $depthChoice = $depth;
+} else if ($depth === '*') {
+    $depth = null;
+    $depthChoice = '*';
+} else if (is_numeric($depth) && $depth >= 0) {
+    $depth = (int)$depth;
+    $depthChoice = $depth;
+} else {
+    $script->shutdown(1, "--depth must be a positive integer or * for unlimited depth");
+}
+$includeParent = true;
+if (Arr::get($options,'exclude-parent')) {
+    $includeParent = false;
+}
+$includeRelations = false;
+if (Arr::get($options,'include-relations')) {
+    $includeRelations = true;
+}
+$includeEmbeds = false;
+if (Arr::get($options,'include-embeds')) {
+    $includeEmbeds = true;
+}
+$includeOwners = false;
+if (Arr::get($options,'include-owners')) {
+    $includeOwners = true;
+}
+$parentNodeId = Arr::get($options, 'parent-node');
+$onlyVisible = false;
+if (Arr::get($options, 'only-visible')) {
+    $onlyVisible = true;
+}
+$fileStorage = Arr::get($options, 'file-storage');
+$languages = null;
+$format = Arr::get($options, 'format');
+if (!$format) {
+    $format = 'json';
+} else if (!in_array($format, $supportedFormats)) {
+    $script->shutdown(1, "Unsupported format '$format', choose from: " . implode(", ", $supportedFormats));
+}
+
+if (!class_exists('Aplia\\Content\\Query\\QuerySet')) {
+    $script->shutdown(1, "Please install composer package aplia/query");
+}
+
+// Reset current language list to include content languages defined in database
+$allLanguages = array_map(function ($lang) { return $lang->attribute('locale'); }, eZContentLanguage::fetchList());
+eZContentLanguage::setPrioritizedLanguages($allLanguages);
+
+$parentNode = null;
+if (is_numeric($parentNodeId)) {
+    $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
+    if (!$parentNode) {
+        $script->shutdown(1, "Parent node $parentNodeId does not exist");
+    }
+} else if (preg_match("/^(ez)?node:([0-9]+)$/", $parentNodeId, $matches)) {
+    $parentNodeId = $matches[2];
+    $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
+    if (!$parentNode) {
+        $script->shutdown(1, "Parent node $parentNodeId does not exist");
+    }
+} else if (preg_match("/^(ez)?object:([0-9]+)$/", $parentNodeId, $matches)) {
+    $parentContentId = $matches[2];
+    $parentObject = \eZContentObject::fetch($parentContentId);
+    if (!$parentObject) {
+        $script->shutdown(1, "Parent object $parentObjectId does not exist");
+    }
+    $parentNode = $parentObject->mainNode();
+    if (!$parentNode) {
+        $script->shutdown(1, "Parent object $parentObjectId does not have main-node");
+    }
+    $parentNodeId = $parentNode->attribute('node_id');
+} else if (preg_match("/^path:(.+)$/", $parentNodeId, $matches)) {
+    $parentPath = $matches[1];
+    $parentNodeId = \eZURLAliasML::fetchNodeIDByPath($parentPath);
+    if (!$parentNodeId) {
+        $script->shutdown(1, "Parent node with path $parentPath does not exist");
+    }
+    $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
+    if (!$parentNode) {
+        $script->shutdown(1, "Parent node $parentNodeId for path $parentPath does not exist");
+    }
+} else if ($parentNodeId) {
+    $parentPath = $parentNodeId;
+    $parentNodeId = \eZURLAliasML::fetchNodeIDByPath($parentPath);
+    if (!$parentNodeId) {
+        $script->shutdown(1, "Parent node with path $parentPath does not exist");
+    }
+    $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
+    if (!$parentNode) {
+        $script->shutdown(1, "Parent node $parentNodeId for path $parentPath does not exist");
+    }
+} else {
+    $parentNode = \eZContentObjectTreeNode::fetch(1);
+}
+
+$options = array(
+    'start_depth' => 0,
+    'include_relations' => $includeRelations,
+    'include_embeds' => $includeEmbeds,
+    'include_owners' => $includeOwners,
+);
+if ($fileStorage) {
+    $options['file_storage'] = $fileStorage;
+}
+
+// Login as admin user to make sure we have access to all content
+$adminUser = \eZUser::fetch(14);
+if ($adminUser) {
+    $adminUser->loginCurrent();
+}
+
+$query = new \Aplia\Content\Query\QuerySet(array(
+    // Disable roles to get all nodes
+    'useRoles' => false,
+));
+if ($classNames) {
+    $query = $query->classes($classNames);
+}
+if ($parentNode) {
+    $query = $query->parentNode($parentNode);
+    $options['start_depth'] = $parentNode->attribute('depth');
+}
+if ($depth) {
+    $query = $query->depth($depth);
+}
+$query = $query->visibility($onlyVisible);
+$prettyPrint = true;
+
+$exportChoices = array(
+    'content_classes' => $classNames,
+    'parent' => array(
+        'node_id' => (int)$parentNode->attribute('id'),
+        'node_uuid' => $parentNode->remoteId(),
+        'object_id' => (int)$parentNode->attribute('contentobject_id'),
+        'object_uuid' => $parentNode->object()->remoteId(),
+        'path' => $parentNode->attribute('path_identification_string'),
+        'url_alias' => $parentNode->urlAlias(),
+        'name' => $parentNode->getName(),
+    ),
+    'content_languages' => $languages,
+    'depth' => $depthChoice,
+    'visibility' => $onlyVisible ? 'visibile' : 'visible+hidden',
+);
+if ($format === "line") {
+    if ($includeParent) {
+        echo $parentNode->attribute('name'), " - ", $parentNode->className(), " (", $parentNode->attribute('contentobject_id'), ")\n";
+    }
+    foreach ($query as $node) {
+        echo $node->attribute('name'), " - ", $node->className(), " (", $node->attribute('contentobject_id'), ")\n";
+    }
+} else if ($format === "ndjson") {
+    $exporter = new \Aplia\Content\ContentExporter($options);
+    if ($includeParent) {
+        $exporter->addNode($parentNode);
+    }
+    $exporter->addQuery($query);
+    $exporter->finalize();
+    $index = $exporter->createIndex();
+    $index['export'] = $exportChoices;
+    echo \Aplia\Formats\NdJson::encode($index);
+    foreach ($exporter->getExportItems() as $exportItems) {
+        foreach ($exportItems as $exportItem) {
+            echo \Aplia\Formats\NdJson::encode($exportItem);
+        }
+    }
+    // TODO: encode export items
+} else if ($format === "json") {
+    $exporter = new \Aplia\Content\ContentExporter($options);
+    if ($includeParent) {
+        $exporter->addNode($parentNode);
+    }
+    $exporter->addQuery($query);
+    $exporter->finalize();
+    $data = array(
+        '__type__' => 'ez_content_bundle',
+        'export_date' => (new \DateTime())->format(\DateTime::RFC3339),
+        'export' => $exportChoices,
+        'types' => $exporter->createTypeList(),
+    );
+    $data = array_merge($data, $exporter->getExportItems());
+    echo \Aplia\Formats\Json::encode($data, $prettyPrint), "\n";
+} else {
+    $script->shutdown(1, "Unknown format $format");
+}
+
+$script->shutdown();

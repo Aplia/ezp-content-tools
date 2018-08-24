@@ -22,7 +22,8 @@ $script = \eZScript::instance(
     )
 );
 $script->startup();
-$options = $script->getOptions("[php-style:][preamble][delete-existing][update-class-group:][update-creator-id:]", "", array(
+$options = $script->getOptions("[php-style:][preamble][delete-existing][update-class-group:][update-creator-id:][use-namespace]", "", array(
+    'use-namespace' => 'Uses shorter namespaces for all class names and adds \'use\' statements in the preamble',
 ));
 $identifiers = Arr::get($options, 'arguments');
 $phpStyle = Arr::get($options, 'php-style');
@@ -30,6 +31,7 @@ $preamble = Arr::get($options, 'preamble', false);
 $deleteExisting = Arr::get($options, 'delete-existing', false);
 $updateClassGroup = Arr::get($options, 'update-class-group', false);
 $updateCreatorId = Arr::get($options, 'update-creator-id', false);
+$useNamespace = Arr::get($options, 'use-namespace') ? true : false;
 if (!$phpStyle) {
     $phpStyle = 'migrate';
 }
@@ -78,9 +80,27 @@ function replaceWithUuidArray(&$nodeIdOrArray)
     }
 }
 
+if ($useNamespace) {
+    $contentTypeClass = 'ContentType';
+} else {
+    $contentTypeClass = '\Aplia\Content\ContentType';
+}
+
 if ($preamble) {
-echo <<<'EOT'
+    echo <<<'EOT'
 <?php
+
+EOT;
+
+    if ($useNamespace) {
+        echo <<<'EOT'
+use Aplia\Content\ContentType;
+
+
+EOT;
+    }
+
+    echo <<<'EOT'
 require 'config.php';
 require 'autoload.php';
 
@@ -158,7 +178,7 @@ foreach ($identifiers as $identifier) {
     $languageNames = array_unique($languageNames);
     if ($phpStyle == 'migrate') {
         echo "// Content-class '$identifier': ", count($attributes), " attributes, languages: ", implode(", ", $languageNames), "\n";
-        echo "$typeVar = new \Aplia\Content\ContentType($identifierRepr);\n";
+        echo "$typeVar = new ${useNamespace}($identifierRepr);\n";
         if ($deleteExisting) {
             echo "// Remove existing class if it exists\n",
                  "if (${typeVar}->exists()) {\n",
