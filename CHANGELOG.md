@@ -3,6 +3,15 @@
 Changelog for the `content-tools` package.
 
 
+## 1.4
+
+- New script for dumping content-object to JSON. It creates an export which
+  contains content-objects and related elements such as section, content-state,
+  sparse class definition, relations, files etc.
+- Improved ContentObjectAttribute to support loading data from the attribute
+  data-type and supports many more data-types. The data is loaded into the
+  $value property depending on the type.
+
 ## 1.3.1
 - Added support for setting logged in user by object id when calling `dump_contentclass`.
 - Added support for setting a content class group on all exported content classes when calling `dump_contentclass`.
