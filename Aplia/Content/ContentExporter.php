@@ -288,6 +288,7 @@ class ContentExporter
                 }
                 \eZFileHandler::copy($path, $newPath);
                 $this->fileMap[$uuid]['path'] = $newPath;
+                $this->fileMap[$uuid]['md5'] = md5_file($newPath);
             }
             return true;
         } else {
