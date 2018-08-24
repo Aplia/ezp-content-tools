@@ -244,8 +244,12 @@ class ContentExporter
     }
 
     public function addNode($node) {
-        $objectId = $node->attribute('contentobject_id');
         $nodeId = $node->attribute('node_id');
+        // Never export the top-most root node
+        if ($nodeId == 1) {
+            return;
+        }
+        $objectId = $node->attribute('contentobject_id');
         if (isset($this->objectMap[$objectId]['locations'][$nodeId])) {
             return;
         }
