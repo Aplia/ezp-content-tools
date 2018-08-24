@@ -502,30 +502,36 @@ class ContentExporter
         $index = array(
             "__type__" => "index",
             'export_date' => (new DateTime())->format(DateTime::RFC3339),
-            'types' => array(),
+            'types' => $this->createTypeList(),
         );
+        return $index;
+    }
+
+    public function createTypeList()
+    {
+        $types = array();
         if ($this->languageMap) {
-            $index['types'][] = 'content_language';
+            $types[] = 'content_language';
         }
         if ($this->sectionMap) {
-            $index['types'][] = 'section';
+            $types[] = 'section';
         }
         if ($this->stateMap) {
-            $index['types'][] = 'content_state';
+            $types[] = 'content_state';
         }
         if ($this->fileMap) {
-            $index['types'][] = 'file';
+            $types[] = 'file';
         }
         if ($this->tagMap) {
-            $index['types'][] = 'tag';
+            $types[] = 'tag';
         }
         if ($this->classMap) {
-            $index['types'][] = 'content_class';
+            $types[] = 'content_class';
         }
         if ($this->objectMap) {
-            $index['types'][] = 'content_object';
+            $types[] = 'content_object';
         }
-        return $index;
+        return $types;
     }
 
     public function getExportItems()

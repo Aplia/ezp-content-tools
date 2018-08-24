@@ -225,6 +225,7 @@ if ($format === "line") {
         '__type__' => 'ez_content_bundle',
         'export_date' => (new \DateTime())->format(\DateTime::RFC3339),
         'export' => $exportChoices,
+        'types' => $exporter->createTypeList(),
     );
     $data = array_merge($data, $exporter->getExportItems());
     echo \Aplia\Formats\Json::encode($data, $prettyPrint), "\n";
