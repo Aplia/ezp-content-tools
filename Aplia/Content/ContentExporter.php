@@ -188,6 +188,7 @@ class ContentExporter
         }
         $data = array(
             '__type__' => 'ez_contentclass',
+            'identifier' => $identifier,
             'name' => $contentClass->name(),
             // The structure only contains the minimal to allow for identifier/type matching
             'sparse' => true,
@@ -272,6 +273,7 @@ class ContentExporter
         if ($file->isFile($path)) {
             $this->fileMap[$uuid] = array(
                 '__type__' => 'file',
+                'uuid' => $uuid,
                 'original_path' => $path,
             );
             if ($this->embedFileData) {
@@ -321,6 +323,7 @@ class ContentExporter
             $language = eZContentLanguage::fetchByLocale($locale);
             $this->languageMap[$locale] = array(
                 '__type__' => 'ez_contentlanguage',
+                'locale' => $locale,
                 'name' => $language->attribute('name'),
             );
             if ($language->attribute('disabled') || !$this->sparse) {
@@ -333,6 +336,7 @@ class ContentExporter
             $section = eZSection::fetchByIdentifier($sectionIdentifier);
             $this->sectionMap[$sectionIdentifier] = array(
                 '__type__' => 'ez_section',
+                'identifier' => $sectionIdentifier,
                 'name' => $section->attribute('name'),
                 'navigation_part_identifier' => $section->attribute('navigation_part_identifier'),
             );
@@ -348,6 +352,7 @@ class ContentExporter
             $group = \eZContentObjectStateGroup::fetchByIdentifier($groupIdentifier);
             $groupData = array(
                 '__type__' => 'ez_contentstate',
+                'identifier' => $groupIdentifier,
                 'translations' => array(),
                 'states' => array(),
             );
@@ -470,6 +475,7 @@ class ContentExporter
         }
         $data = array(
             '__type__' => 'eztag',
+            'uuid' => $uuid,
             'id' => $tag->attribute('id'),
             'parent_id' => $tag->attribute('parent_id'),
             'keyword' => $tag->attribute('keyword'),
