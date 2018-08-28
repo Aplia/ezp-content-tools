@@ -1,0 +1,172 @@
+#!/usr/bin/env php
+<?php
+use Aplia\Support\Arr;
+use \eZCLI;
+use \eZScript;
+use Aplia\Content\ContentImporter;
+
+@include_once 'config.php';
+require_once 'autoload.php';
+
+set_time_limit(0);
+
+$cli = \eZCLI::instance();
+$script = \eZScript::instance(
+    array(
+        'description' =>
+            "Import content-bundles into eZ publish",
+        'use-session' => false,
+        'use-modules' => true,
+        'use-extensions' => true,
+    )
+);
+$script->startup();
+$options = $script->getOptions("[parent-node:][config:]", "", array(
+    "parent-node" => "Choose starting point for import of content objects, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id> or path:<alias-path>",
+));
+$script->initialize();
+
+// Reset current language list to include content languages defined in database
+$allLanguages = array_map(function ($lang) { return $lang->attribute('locale'); }, eZContentLanguage::fetchList());
+eZContentLanguage::setPrioritizedLanguages($allLanguages);
+
+$parentNodeId = Arr::get($options, 'parent-node');
+$parentNode = null;
+if (is_numeric($parentNodeId)) {
+    $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
+    if (!$parentNode) {
+        $script->shutdown(1, "Parent node $parentNodeId does not exist");
+    }
+} else if (preg_match("/^(ez)?node:([0-9]+)$/", $parentNodeId, $matches)) {
+    $parentNodeId = $matches[2];
+    $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
+    if (!$parentNode) {
+        $script->shutdown(1, "Parent node $parentNodeId does not exist");
+    }
+} else if (preg_match("/^(ez)?object:([0-9]+)$/", $parentNodeId, $matches)) {
+    $parentContentId = $matches[2];
+    $parentObject = \eZContentObject::fetch($parentContentId);
+    if (!$parentObject) {
+        $script->shutdown(1, "Parent object $parentObjectId does not exist");
+    }
+    $parentNode = $parentObject->mainNode();
+    if (!$parentNode) {
+        $script->shutdown(1, "Parent object $parentObjectId does not have main-node");
+    }
+    $parentNodeId = $parentNode->attribute('node_id');
+} else if (preg_match("/^path:(.+)$/", $parentNodeId, $matches)) {
+    $parentPath = $matches[1];
+    $parentNodeId = \eZURLAliasML::fetchNodeIDByPath($parentPath);
+    if (!$parentNodeId) {
+        $script->shutdown(1, "Parent node with path $parentPath does not exist");
+    }
+    $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
+    if (!$parentNode) {
+        $script->shutdown(1, "Parent node $parentNodeId for path $parentPath does not exist");
+    }
+} else if ($parentNodeId) {
+    $parentPath = $parentNodeId;
+    $parentNodeId = \eZURLAliasML::fetchNodeIDByPath($parentPath);
+    if (!$parentNodeId) {
+        $script->shutdown(1, "Parent node with path $parentPath does not exist");
+    }
+    $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
+    if (!$parentNode) {
+        $script->shutdown(1, "Parent node $parentNodeId for path $parentPath does not exist");
+    }
+} else {
+    $parentNode = \eZContentObjectTreeNode::fetch(1);
+}
+$configFile = Arr::get($options, 'config');
+
+$files = Arr::get($options, 'arguments');
+if (!$files) {
+    $script->shutdown(1, "No import files specified");
+}
+
+$options = array(
+    'start_node' => $parentNode,
+);
+
+// Login as admin user to make sure we have access to all content
+$adminUser = \eZUser::fetch(14);
+if ($adminUser) {
+    $adminUser->loginCurrent();
+}
+
+$db = eZDB::instance();
+$db->begin();
+
+try {
+    $importer = new ContentImporter($options);
+    if ($configFile) {
+        $importer->loadConfiguration($configFile);
+    }
+
+    foreach ($files as $filePath) {
+        if (!file_exists($filePath)) {
+            $script->shutdown(1, "Import file $filePath does not exist");
+        }
+        $file = fopen($filePath, "rb");
+        $hasIndex = false;
+        $buffer = "";
+        $offset = 0;
+        $newOffset = 0;
+        $count = 0;
+        while ($chunk = fread($file, 4096)) {
+            $buffer .= $chunk;
+            while (true) {
+                $recordEnd = strpos($buffer, "\n");
+                if ($recordEnd === false) {
+                    break;
+                }
+                $recordData = substr($buffer, 0, $recordEnd);
+                $newOffset += strlen($recordData);
+                $buffer = substr($buffer, $recordEnd + 1);
+                $recordData = trim($recordData);
+                if ($recordData) {
+                    try {
+                        $record = json_decode($recordData, /*assoc*/true);
+                    } catch (\Exception $e) {
+                        $script->shutdown(1, "Failed to decode record as JSON, found at offset $offset, length " . strlen($record));
+                    }
+                    if ($record === null && strcmp($recordData, "null") != 0) {
+                        $script->shutdown(1, "Failed to decode record as JSON, found at offset $offset, length " . strlen($record));
+                    }
+                    if (!is_array($record)) {
+                        continue;
+                    }
+                    try {
+                        $importer->importRecord($record);
+                    } catch (\Aplia\Content\Exceptions\ImportDenied $e) {
+                        throw $e;
+                    } catch (\Exception $e) {
+                        throw $e;
+                        $script->shutdown(1, "Failed to import record: " . $e->getMessage());
+                    }
+                    if ($count == 0 && !($importer->hasIndex || !$importer->hasBundle)) {
+                        $script->shutdown(1, "The first record received must be an index or bundle, got type: " . $importer->lastRecordType);
+                    }
+                    $recordData = null;
+                } else {
+                    // Empty record, ignore it
+                }
+                $count += 1;
+                $offset = $newOffset;
+            }
+        }
+        $cli->output("Imported $count records");
+    }
+} catch (\Aplia\Content\Exceptions\ImportDenied $e) {
+    $db->rollback();
+    $script->shutdown(1, $e->getMessage());
+} catch (\Exception $e) {
+    $db->rollback();
+    throw $e;
+    $script->shutdown(1, $e->getMessage());
+}
+
+$db->commit();
+$db->rollback();
+
+$script->shutdown();
