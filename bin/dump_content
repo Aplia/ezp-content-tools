@@ -21,8 +21,8 @@ $script = \eZScript::instance(
     )
 );
 $script->startup();
-$options = $script->getOptions("[format:][class:][parent-node:][depth:][exclude-parent][only-visible][file-storage:][include-relations][include-embeds][include-owners]", "", array(
-    "format" => "Type of format, choose between json, ndjson and line",
+$options = $script->getOptions("[format:][preamble][use-namespace][class:][parent-node:][depth:][exclude-parent][only-visible][file-storage:][include-relations][include-embeds][include-owners][update-first-parent:][summary]", "", array(
+    "format" => "Type of format, choose between json, ndjson, php and line",
     "class" => "Limit search of objects to only these type of content-classes. Comma separated list",
     "parent-node" => "Choose starting point for export, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id> or path:<alias-path>",
     "depth" => "Choose how deep in the tree structure to search, defaults to 1 level. Use * for unlimited",
@@ -32,11 +32,49 @@ $options = $script->getOptions("[format:][class:][parent-node:][depth:][exclude-
     'include-relations' => 'Include all objects which are related in export',
     'include-embeds' => 'Include all objects which are embedded in export',
     'include-owners' => 'Include objects for all owners',
+    "update-first-parent" => "Updates parent node on the top-level nodes in the export. Set this to a node id. (php format only)",
+    "preamble" => "Whether to include preamble when exporting php (php format only)",
+    "use-namespace" => "Whether to include ContentType namespace use statement (php format only)",
+    "summary" => "Include commented summary at the end (php format only)",
 ));
 $script->initialize();
 
-$supportedFormats = array('line', 'json', 'ndjson');
+function underscoreToCamelCase($string)
+{
+    $str = str_replace(' ', '', ucwords(str_replace('_', " ", $string)));
+    $str = lcfirst($str);
+    return $str;
+}
 
+function indentTextLines($text, $indentation=4, $first=true)
+{
+    $indentText = str_repeat(" ", $indentation);
+    $lines = preg_split("/\r\n|\r|\n/", $text);
+    if (!$first) {
+        $firstLine = array_shift($lines);
+    }
+    $lines = array_map(function ($item) use ($indentText) { return $indentText . $item; }, $lines);
+    if (!$first) {
+        array_unshift($lines, $firstLine);
+    }
+    return implode("\n", $lines);
+}
+
+function commentTextLines($text, $first=true)
+{
+    $commentText = '//';
+    $lines = preg_split("/\r\n|\r|\n/", $text);
+    if (!$first) {
+        $firstLine = array_shift($lines);
+    }
+    $lines = array_map(function ($item) use ($commentText) { return $commentText . $item; }, $lines);
+    if (!$first) {
+        array_unshift($lines, $firstLine);
+    }
+    return implode("\n", $lines);
+}
+
+$supportedFormats = array('line', 'json', 'ndjson', 'php');
 $classNames = Arr::get($options, 'class');
 if ($classNames) {
     $classNames = explode(",", $classNames);
@@ -75,9 +113,22 @@ if (Arr::get($options,'include-owners')) {
     $includeOwners = true;
 }
 $parentNodeId = Arr::get($options, 'parent-node');
+$topLevelParentNodeId = Arr::get($options, 'update-first-parent');
 $onlyVisible = false;
 if (Arr::get($options, 'only-visible')) {
     $onlyVisible = true;
+}
+$phpPreamble = false;
+if (Arr::get($options, 'preamble')) {
+    $phpPreamble = true;
+}
+$useNamespace = false;
+if (Arr::get($options, 'use-namespace')) {
+    $useNamespace = true;
+}
+$summary = false;
+if (Arr::get($options, 'summary')) {
+    $summary = true;
 }
 $fileStorage = Arr::get($options, 'file-storage');
 $languages = null;
@@ -189,7 +240,7 @@ $exportChoices = array(
     ),
     'content_languages' => $languages,
     'depth' => $depthChoice,
-    'visibility' => $onlyVisible ? 'visibile' : 'visible+hidden',
+    'visibility' => $onlyVisible ? 'visible' : 'visible+hidden',
 );
 if ($format === "line") {
     if ($includeParent) {
@@ -229,6 +280,138 @@ if ($format === "line") {
     );
     $data = array_merge($data, $exporter->getExportItems());
     echo \Aplia\Formats\Json::encode($data, $prettyPrint), "\n";
+} else if($format === "php") {
+
+    if ($phpPreamble) {
+        echo <<<'EOT'
+<?php
+
+
+EOT;
+
+        if ($useNamespace) {
+            echo <<<'EOT'
+use Aplia\Content\ContentType;
+
+
+EOT;
+        }
+
+    echo <<<'EOT'
+require 'config.php';
+require 'autoload.php';
+
+$cli = \eZCLI::instance();
+$script = \eZScript::instance(
+    array(
+        'description' =>
+            "Defines content object definitions",
+        'use-session' => false,
+        'use-modules' => true,
+        'use-extensions' => true,
+    )
+);
+$script->startup();
+$options = $script->getOptions("", "", array());
+$script->initialize();
+$db = \eZDB::instance();
+$db->begin();
+
+
+EOT;
+    } // end if preamble
+
+    $exporter = new \Aplia\Content\ContentExporter($options);
+    if ($includeParent) {
+        $exporter->addNode($parentNode);
+    }
+    $exporter->addQuery($query);
+    $exporter->finalize();
+    $data = array(
+        '__type__' => 'ez_content_bundle',
+        'export_date' => (new \DateTime())->format(\DateTime::RFC3339),
+        'export' => $exportChoices,
+        'types' => $exporter->createTypeList(),
+    );
+    $data = array_merge($data, $exporter->getExportItems());
+
+    $contentTypeClass = '\\Aplia\\Content\\ContentType';
+    $initializedClasses = array();
+
+    foreach ($data['content_objects'] as $contentObjectId => $contentObject) {
+        $objectAttributes = (isset($contentObject['attributes']) && count($contentObject['attributes'])) ? $contentObject['attributes'] : array();
+
+        if (isset($contentObject['class_identifier']) and isset($contentObject['name'])) {
+            $params = array();
+            if (isset($contentObject['uuid'])) {
+                $params['uuid'] = $contentObject['uuid'];
+            }
+            if (isset($contentObject['locations'])) {
+                $params['locations'] = array();
+                foreach ($contentObject['locations'] as $nodeId => $contentNode) {
+                    if ($topLevelParentNodeId &&
+                        (isset($contentNode['original_depth']) && isset($options['start_depth'])) &&
+                        ($contentNode['original_depth'] == $options['start_depth'] + 1)) {
+                        if (is_numeric($topLevelParentNodeId)) {
+                            $params['locations'][] = array('parent_id' => $topLevelParentNodeId);
+                        } else {
+                            $script->shutdown(1, "Parameter 'update-first-parent' expected a node id, but got '$topLevelParentNodeId'");
+                        }
+                    } else {
+                        if (isset($contentNode['parent_node_uuid'])) {
+                            $params['locations'][] = array('parent_uuid' => $contentNode['parent_node_uuid']);
+                        } else {
+                            $script->shutdown(1, "Parent node uuid not defined in content object $contentObjectId");
+                        }
+                    }
+                }
+            }
+            $objectName = $contentObject['name'];
+            $uuidString = isset($params['uuid']) ? ", uuid: ".$params['uuid'] : "";
+            $className = $contentObject['class_identifier'];
+            $classNameRepr = "\$".underscoreToCamelCase($className);
+
+            if (isset($initializedClasses[$className])) {
+                $initializedClasses[$className][] = $objectName.$uuidString;
+            } else {
+                $initializedClasses[$className] = array($objectName.$uuidString);
+                echo "\n".$classNameRepr." = new ${contentTypeClass}('${className}');\n";
+            }
+
+            echo $classNameRepr."->contentObject(\n".indentTextLines(var_export($params, true))."\n)\n";
+
+            if (isset($contentObject['translations']['nor-NO']['attributes'])) {
+                $objectAttributes = array_merge($objectAttributes, $contentObject['translations']['nor-NO']['attributes']);
+            }
+
+            if ($objectAttributes) {
+                foreach ($objectAttributes as $attrIdentifier => $attribute) {
+                    if ($attribute) {
+                        echo "->setAttribute(".var_export($attrIdentifier, true).", ".var_export($attribute, true).")\n";
+                    }
+                }
+            }
+
+            echo "->create();\n\n";
+        } else {
+            $script->shutdown(1, "Class identifier or name not set for content object id ".$contentObjectId);
+        }
+
+    }
+
+    if ($summary) {
+        echo "// Added content: \n".commentTextLines(indentTextLines(var_export($initializedClasses, true)));
+    }
+
+    if ($phpPreamble) {
+        echo <<<'EOT'
+
+
+$db->commit();
+$script->shutdown();
+
+EOT;
+    } // end if preamble
 } else {
     $script->shutdown(1, "Unknown format $format");
 }
