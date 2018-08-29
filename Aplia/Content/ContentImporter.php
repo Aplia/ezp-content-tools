@@ -31,10 +31,16 @@ class ContentImporter
     public $transformState = array();
     // Maps content state identifier to a new data structure, for instance to use an existing content state
     public $mapState = array();
+
+    // Maps content content-class identifier to an object/class that will transform the content
+    public $transformClass = array();
+    // Maps content content-class identifier to a new data structure, for instance to use an existing content content-class
+    public $mapClass = array();
     
     // property $sectionIndex = array();
     // property $languageIndex = array();
     // property $stateIndex = array();
+    // property $classIndex = array();
 
     public function __construct(array $options = null) {
         if (isset($options['start_node'])) {
@@ -47,7 +53,8 @@ class ContentImporter
 
     public function __isset($name)
     {
-        return $name === 'sectionIndex' || $name === 'languageIndex' || $name == 'stateIndex';
+        return $name === 'sectionIndex' || $name === 'languageIndex' || $name == 'stateIndex' ||
+               $name == 'classIndex';
     }
 
     public function __get($name)
@@ -61,6 +68,9 @@ class ContentImporter
         } else if ($name == 'stateIndex') {
             $this->stateIndex = array();
             return $this->loadStates();
+        } else if ($name == 'classIndex') {
+            $this->classIndex = array();
+            return $this->loadClasses();
         }
     }
 
@@ -175,6 +185,63 @@ class ContentImporter
                 $this->transformState[$newState] = new $className($ini);
             }
         }
+
+        // Handle content class mapping/transforms
+        if ($ini->hasVariable('Class', 'ClassMaps')) {
+            $classMaps = $ini->variable('Class', 'ClassMaps');
+            foreach ($classMaps as $newClass) {
+                $iniGroup = 'Class-' . $newClass;
+                if (!$ini->hasGroup($iniGroup)) {
+                    throw new ImportDenied("Class mapping for '$newClass' does not exist in INI file, group '$iniGroup' not found");
+                }
+                if (!$ini->hasVariable($iniGroup, 'Class')) {
+                    throw new ImportDenied("Class mapping for '$newClass' does not exist in INI file, no 'Class' entry in group '$iniGroup'");
+                }
+                $existingClass = $ini->variable($iniGroup, 'Class');
+                $attributeMap = array();
+                if ($ini->hasVariable($iniGroup, 'AttributeMap')) {
+                    $attributeMap = $ini->variable($iniGroup, 'AttributeMap');
+                    foreach ($attributeMap as $key => $data) {
+                        $attributeMap[$key] = array(
+                            'identifier' => $data,
+                        );
+                    }
+                }
+                $contentClass = \eZContentClass::fetchByIdentifier($existingClass);
+                if (!$contentClass) {
+                    throw new ImportDenied("Mapping of content class from '$newClass' to '$existingClass' not possible as '$existingClass' does not exist");
+                }
+                $attributes = array();
+                foreach ($contentClass->fetchAttributes() as $classAttribute) {
+                    $attributeIdentifier = $classAttribute->attribute('identifier');
+                    $attributeType = $classAttribute->attribute('data_type_string');
+                    $attributes[$attributeIdentifier] = array(
+                        'type' => $attributeType,
+                    );
+                }
+                foreach ($attributeMap as $newAttribute => $mapping) {
+                    $existingAttribute = $mapping['identifier'];
+                    if (!isset($attributes[$existingAttribute])) {
+                        throw new ImportDenied("Cannot map content class attribute '$newClass/$newAttribute' to '$existingClass/$existingAttribute', '$existingClass/$existingAttribute' does not exist");
+                    }
+                    $attributeMap[$newAttribute]['type'] = $attributes[$existingAttribute]['type'];
+                }
+                $this->mapClass[$newClass] = array(
+                    'identifier' => $existingClass,
+                    'attributeMap' => $attributeMap,
+                );
+            }
+        }
+
+        if ($ini->hasVariable('Class', 'Transform')) {
+            $transforms = $ini->variable('State', 'Transform');
+            foreach ($transforms as $newClass => $className) {
+                if (!class_exists($className)) {
+                    throw new ImportDenied("Transform class $className used for content class $newClass does not exist");
+                }
+                $this->transformClass[$newClass] = new $className($ini);
+            }
+        }
     }
 
     /**
@@ -222,6 +289,32 @@ class ContentImporter
             );
         }
         return $this->stateIndex;
+    }
+
+    /**
+     * Loads all existing eZContentClass identifiers and registers them in the index.
+     */
+    public function loadClasses()
+    {
+        foreach (\eZContentClass::fetchAllClasses() as $class) {
+            $attributes = array();
+            $dataMap = $class->dataMap();
+            foreach ($dataMap as $attributeIdentifier => $attribute) {
+                $attributes[$attributeIdentifier] = array(
+                    'id' => $attribute->attribute('id'),
+                    'identifier' => $attributeIdentifier,
+                    'type' => $attribute->attribute('data_type_string'),
+                    'can_translate' => $attribute->attribute('can_translate') && $attribute->dataType()->isTranslatable(),
+                );
+            }
+            $this->classIndex[$class->attribute('identifier')] = array(
+                'id' => $class->attribute('id'),
+                'new' => false,
+                'identifier' => $class->attribute('identifier'),
+                'attributes' => $attributes,
+            );
+        }
+        return $this->classIndex;
     }
 
     public function importSection($sectionData)
@@ -494,6 +587,89 @@ class ContentImporter
         }
     }
 
+    public function importContentClass($classData)
+    {
+        if (!isset($classData['identifier'])) {
+            throw new TypeError("Key 'identifier' missing from content-class record");
+        }
+        $identifier = $classData['identifier'];
+        $remappedTypeMap = null;
+        if (isset($this->transformClass[$identifier])) {
+            $newData = $this->transformClass[$identifier]->transform($classData);
+            if ($newData) {
+                $classData = $newData;
+                $identifier = $classData['identifier'];
+            }
+        } else if (isset($this->transformClass['*'])) {
+            $newData = $this->transformClass['*']->transform($classData);
+            if ($newData) {
+                $classData = $newData;
+                $identifier = $classData['identifier'];
+            }
+        } else if (isset($this->mapClass[$identifier])) {
+            $newData = $this->mapClass[$identifier];
+            if ($newData) {
+                if (isset($newData['identifier'])) {
+                    $classData['identifier'] = $newData['identifier'];
+                }
+                if (Arr::get($classData, 'sparse', false)) {
+                    if (isset($newData['attributeMap'])) {
+                        $typeMap = Arr::get($classData, "type_map");
+                        if (!is_array($typeMap)) {
+                            throw new ImportDenied("Import of sparse content-class $identifier failed, no type_map defined");
+                        }
+                        // Rewrite type_map to use the newly assigned attribute names/types
+                        $newTypeMap = array();
+                        foreach ($typeMap as $newIdentifier => $newType) {
+                            if (isset($newData['attributeMap'][$newIdentifier])) {
+                                $mapping = $newData['attributeMap'][$newIdentifier];
+                                if (isset($mapping['type'])) {
+                                    $newType = $mapping['type'];
+                                }
+                                $newTypeMap[$mapping['identifier']] = $newType;
+                            } else {
+                                $newTypeMap[$newIdentifier] = $newType;
+                            }
+                        }
+                        $remappedTypeMap = $newTypeMap;
+                    }
+                }
+                $identifier = $classData['identifier'];
+            }
+        }
+        $sparse = Arr::get($classData, 'sparse', false);
+        if (!$sparse) {
+            throw new ImportDenied("Import of full content-class definitions are not yet supported");
+        }
+        else {
+            if (!isset($this->classIndex[$identifier])) {
+                throw new ImportDenied("Import requires content-class $identifier but it does not exist on site, cannot import content");
+            }
+
+            $classDefinition = $this->classIndex[$identifier];
+            if ($remappedTypeMap !== null) {
+                $typeMap = $remappedTypeMap;
+            } else {
+                $typeMap = Arr::get($classData, "type_map");
+                if (!is_array($typeMap)) {
+                    throw new ImportDenied("Import of sparse content-class $identifier failed, no type_map defined");
+                }
+            }
+            // Verify that all required attributes exist in class and are of required type
+            // TODO: Should be a way to allow certain data-type mismatches, e.g. ezstring to eztext, maybe via transforms?
+            foreach ($typeMap as $attributeIdentifier => $attributeType) {
+                if (!isset($classDefinition['attributes'][$attributeIdentifier])) {
+                    throw new ImportDenied("Import of spare content-class $identifier failed, attribute $attributeIdentifier does not exist");
+                }
+                $attributeDefinition = $classDefinition['attributes'][$attributeIdentifier];
+                if ($attributeDefinition['type'] != $attributeType) {
+                    throw new ImportDenied("Import of spare content-class $identifier failed, attribute $attributeIdentifier was expected to be of type $attributeType but is actually " . $attributeDefinition['type']);
+                }
+            }
+            $this->classIndex[$identifier]['remapping'] = $remappedTypeMap;
+        }
+    }
+
     public function importIndex($data)
     {
         $date = Arr::get($data, 'export_date');
@@ -551,6 +727,9 @@ class ContentImporter
                 }
             }
             if (isset($data['content_classes'])) {
+                foreach ($data as $record) {
+                    $this->importContentClass($record);
+                }
             }
             if (isset($data['content_objects'])) {
             }
@@ -561,6 +740,7 @@ class ContentImporter
         } else if ($type == 'ez_contentstate') {
             $this->importState($data);
         } else if ($type == 'ez_contentclass') {
+            $this->importContentClass($data);
         } else if ($type == 'ez_contentobject') {
         } else {
             throw new TypeError("Unsupported record type $type");
