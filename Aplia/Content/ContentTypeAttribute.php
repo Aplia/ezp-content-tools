@@ -141,7 +141,7 @@ class ContentTypeAttribute
         return $xmlObj->asXML();
     }
 
-    public function selectionTypeMap($valueOrKey, $getName = false)
+    public function objectRelationSelectionTypeMap($valueOrKey, $getName = false)
     {
         $return = 0;
         $map = array(
@@ -162,32 +162,6 @@ class ContentTypeAttribute
         }
 
         return $return;
-    }
-
-    public function makeObjectRelationListXml($options)
-    {
-        $xmlObj = new SimpleXMLElement('<?xml version="1.0" encoding="UTF-8"?><related-objects/>');
-
-        foreach ($options as $name => $value) {
-            if ($name == "class_constraint_list") {
-                $constraints = $xmlObj->addChild('constraints');
-                foreach ($value as $index => $identifier) {
-                    $constraint = $constraints->addChild('allowed-class');
-                    $constraint->addAttribute('contentclass-identifier', $identifier);
-                }
-            } elseif ($name == 'default_placement') {
-                $contentobjectPlacement = $xmlObj->addChild('contentobject-placement');
-                $contentobjectPlacement->addAttribute('node-id', $this->relatedNodeId($value));
-            } elseif ($name == 'selection_type') {
-                $contentobjectPlacement = $xmlObj->addChild('selection_type');
-                $contentobjectPlacement->addAttribute('value', $this->selectionTypeMap($value));
-            } else {
-                $child = $xmlObj->addChild($name);
-                $child->addAttribute('value', $value);
-            }
-        }
-
-        return $xmlObj->asXML();
     }
 
     public function relatedNodeId($arrayOrNodeId)
@@ -284,28 +258,29 @@ class ContentTypeAttribute
             }
         } else if ($type == 'ezobjectrelation') {
             if (isset($value['selection_type'])) {
-                // $fields['data_int1'] = $this->selectionTypeMap($value['selection_type']);
-
-                $content['selection_type'] = $this->selectionTypeMap($value['selection_type']);
+                $content['selection_type'] = $this->objectRelationSelectionTypeMap($value['selection_type']);
             }
             if (isset($value['default_selection_node'])) {
-                // $fields['data_int2'] = $this->relatedNodeId($value['default_selection_node']);
-
                 $content['default_selection_node'] = $this->relatedNodeId($value['default_selection_node']);
             }
             if (isset($value['fuzzy_match'])) {
-                // $fields['data_int3'] = $value['fuzzy_match'];
-
                 $content['fuzzy_match'] = $value['fuzzy_match'];
             }
         } else if ($type == 'ezobjectrelationlist') {
-            // $fields['data_text5'] = $this->makeObjectRelationListXml($value);
-
-            $content['selection_type'] = $this->selectionTypeMap($value['selection_type']);
-            $content['default_placement'] = $value['default_placement'];
-            $content['type'] = $value['type'];
-            $content['class_constraint_list'] = $value['class_constraint_list'];
+            if (isset($value['selection_type'])) {
+                $content['selection_type'] = $this->objectRelationSelectionTypeMap($value['selection_type']);
+            }
+            if (isset($value['default_placement'])) {
+                $content['default_placement']['node_id'] = $this->relatedNodeId($value['default_placement']);
+            }
+            if (isset($value['type'])) {
+                $content['type'] = $value['type'];
+            }
+            if (isset($value['class_constraint_list'])) {
+                $content['class_constraint_list'] = $value['class_constraint_list'];
+            }
         } else {
+
             // Let the datatype set the values using class-content value
             // This requires that the datatype actually supports this
             // Data-types known to work for this are:
