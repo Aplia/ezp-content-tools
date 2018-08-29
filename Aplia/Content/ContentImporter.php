@@ -282,10 +282,16 @@ class ContentImporter
     public function loadStates()
     {
         foreach (\eZContentObjectStateGroup::fetchObjectList(\eZContentObjectStateGroup::definition()) as $stateGroup) {
+            $stateIdentifiers = array();
+            $states = $stateGroup->states();
+            foreach ($states as $state) {
+                $stateIdentifiers[] = $state->attribute('identifier');
+            }
             $this->stateIndex[$stateGroup->attribute('identifier')] = array(
                 'id' => $stateGroup->attribute('id'),
                 'new' => false,
                 'identifier' => $stateGroup->attribute('identifier'),
+                'states' => $stateIdentifiers,
             );
         }
         return $this->stateIndex;
@@ -491,6 +497,16 @@ class ContentImporter
         $part = Arr::get($stateData, "navigation_part_identifier");
         if (isset($this->stateIndex[$identifier])) {
             $existing = $this->stateIndex[$identifier];
+            if (!isset($stateData['states']) || !is_array($stateData['states'])) {
+                // No states defined, assume it is the same
+                return;
+            }
+            // See if the states that are required by import exist in the current content state
+            if (!array_diff(array_keys($stateData['states']), $this->stateIndex[$identifier]['states'])) {
+                // All required states exist, no change
+                return;
+            }
+            var_dump(array_keys($stateData['states']), $this->stateIndex[$identifier]['states'], array_diff(array_keys($stateData['states']), $this->stateIndex[$identifier]['states']));
             // TODO: Check if all states are the same, if so skip it
             if ($this->askOverwrite) {
                 echo "Content object state '$identifier' already exist\n";
