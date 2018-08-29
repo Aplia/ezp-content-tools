@@ -100,10 +100,12 @@ $db->begin();
 try {
     $importer = new ContentImporter($options);
     if ($configFile) {
+        echo "Loading configuration file $configFile\n";
         $importer->loadConfiguration($configFile);
     }
 
     foreach ($files as $filePath) {
+        echo "Processing import file $filePath\n";
         if (!file_exists($filePath)) {
             $script->shutdown(1, "Import file $filePath does not exist");
         }
