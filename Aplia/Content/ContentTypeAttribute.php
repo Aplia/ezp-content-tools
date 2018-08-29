@@ -141,19 +141,27 @@ class ContentTypeAttribute
         return $xmlObj->asXML();
     }
 
-    public function selectionTypeMap($value)
+    public function selectionTypeMap($valueOrKey, $getName = false)
     {
+        $return = 0;
         $map = array(
-            0 => 'browse',
-            1 => 'dropdown',
-            2 => 'radio_button',
-            3 => 'checkbox',
-            4 => 'multiple_list',
-            5 => 'template_multiple',
-            6 => 'template_single'
+            0 => 'browse_multi',
+            1 => 'dropdown_single',
+            2 => 'radio_buttons_single',
+            3 => 'checkboxes_multi',
+            4 => 'selection_list_multi',
+            5 => 'template_based_multi',
+            6 => 'template_based_single'
         );
-        $key = array_search($value, $map);
-        return $key ? $key : $value;
+
+        if ($getName && (is_numeric($valueOrKey) && isset($map[$valueOrKey]))) {
+            $return = $map[$valueOrKey];
+        } else {
+            $key = array_search($valueOrKey, $map);
+            $return = $key ? $key : $valueOrKey;
+        }
+
+        return $return;
     }
 
     public function makeObjectRelationListXml($options)
@@ -170,11 +178,16 @@ class ContentTypeAttribute
             } elseif ($name == 'default_placement') {
                 $contentobjectPlacement = $xmlObj->addChild('contentobject-placement');
                 $contentobjectPlacement->addAttribute('node-id', $this->relatedNodeId($value));
+            } elseif ($name == 'selection_type') {
+                $contentobjectPlacement = $xmlObj->addChild('selection_type');
+                $contentobjectPlacement->addAttribute('value', $this->selectionTypeMap($value));
             } else {
                 $child = $xmlObj->addChild($name);
                 $child->addAttribute('value', $value);
             }
         }
+
+        return $xmlObj->asXML();
     }
 
     public function relatedNodeId($arrayOrNodeId)
@@ -269,18 +282,29 @@ class ContentTypeAttribute
             if (isset($value['options'])) {
                 $fields['data_text5'] = $this->makeSelectionXml($value['options']);
             }
-        } else if ($type == 'ezsobjectrelation') {
+        } else if ($type == 'ezobjectrelation') {
             if (isset($value['selection_type'])) {
-                $fields['data_int1'] = $this->selectionTypeMap($value['selection_type']);
+                // $fields['data_int1'] = $this->selectionTypeMap($value['selection_type']);
+
+                $content['selection_type'] = $this->selectionTypeMap($value['selection_type']);
             }
             if (isset($value['default_selection_node'])) {
-                $fields['data_int2'] = $this->relatedNodeId($value['default_selection_node']);
+                // $fields['data_int2'] = $this->relatedNodeId($value['default_selection_node']);
+
+                $content['default_selection_node'] = $this->relatedNodeId($value['default_selection_node']);
             }
             if (isset($value['fuzzy_match'])) {
-                $fields['data_int3'] = $value['fuzzy_match'];
+                // $fields['data_int3'] = $value['fuzzy_match'];
+
+                $content['fuzzy_match'] = $value['fuzzy_match'];
             }
-        } else if ($type == 'ezsobjectrelationlist') {
-            $fields['data_text5'] = $this->makeObjectRelationListXml($value);
+        } else if ($type == 'ezobjectrelationlist') {
+            // $fields['data_text5'] = $this->makeObjectRelationListXml($value);
+
+            $content['selection_type'] = $this->selectionTypeMap($value['selection_type']);
+            $content['default_placement'] = $value['default_placement'];
+            $content['type'] = $value['type'];
+            $content['class_constraint_list'] = $value['class_constraint_list'];
         } else {
             // Let the datatype set the values using class-content value
             // This requires that the datatype actually supports this

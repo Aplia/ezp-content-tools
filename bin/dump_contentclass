@@ -207,6 +207,7 @@ foreach ($identifiers as $identifier) {
         echo "\n    // Define attributes";
         foreach ($attributes as $attribute) {
             $classAttribute = $attribute->classAttribute;
+            $attributeType = $classAttribute->attribute('data_type_string');
             $attributeTypeRepr = var_export($classAttribute->attribute('data_type_string'), true);
             $attributeIdentifier = $classAttribute->attribute('identifier');
             $attributeIdentifierRepr = var_export($attributeIdentifier, true);
@@ -218,10 +219,12 @@ foreach ($identifiers as $identifier) {
             $attributeCustomFields = $attribute->attributeFields();
             if ($attributeCustomFields !== null) {
                 $attributeFields['content'] = $attributeCustomFields;
-                if (trim($attributeTypeRepr, "'") == "ezobjectrelationlist" && isset($attributeFields['content']['default_placement'])) {
+                if ($attributeType == "ezobjectrelationlist" && isset($attributeFields['content']['default_placement'])) {
                     replaceWithUuidArray($attributeFields['content']['default_placement']);
-                } elseif (trim($attributeTypeRepr, "'") == "ezobjectrelation" && isset($attributeFields['content']['default_selection_node'])) {
+                    $attributeFields['content']['selection_type'] = $attribute->selectionTypeMap($attributeFields['content']['selection_type'], true);
+                } elseif ($attributeType == "ezobjectrelation" && isset($attributeFields['content']['default_selection_node'])) {
                     replaceWithUuidArray($attributeFields['content']['default_selection_node']);
+                    $attributeFields['content']['selection_type'] = $attribute->selectionTypeMap($attributeFields['content']['selection_type'], true);
                 }
             }
             $attributeFields['is_searchable'] = (bool)$classAttribute->attribute('is_searchable');
