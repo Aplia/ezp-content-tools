@@ -80,7 +80,7 @@ class ContentObjectAttribute
         } else if ($type == 'ezdate' || $type == 'ezdatetime') {
             $value = $attribute->toString();
             if ($value) {
-                $value = new DateTime('@' . $value);
+                $value = new \DateTime('@' . $value);
             }
         } else if ($type == 'ezauthor' || $type == 'ezbinaryfile' ||  $type == 'ezimage' ||
                    $type == 'ezcountry' || $type == 'ezemail' || $type == 'ezidentifier' ||

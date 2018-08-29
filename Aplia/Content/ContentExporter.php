@@ -86,6 +86,7 @@ class ContentExporter
             'owner' => null,
             'section_identifier' => $contentObject->sectionIdentifier(),
             'class_identifier' => $contentClass->attribute('identifier'),
+            'name' => $contentObject->attribute('name'),
             'modified_date' => $modifiedDate->format(DateTime::RFC3339),
             'published_date' => $publishedDate->format(DateTime::RFC3339),
             'is_always_available' => (bool)$contentObject->isAlwaysAvailable(),
