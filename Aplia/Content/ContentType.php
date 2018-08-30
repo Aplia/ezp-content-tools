@@ -1004,8 +1004,11 @@ class ContentType
      * content-class. The actual content-object is not created and may
      * even exist in the DB.
      */
-    public function contentObject($params)
+    public function contentObject(array $params=null)
     {
+        if ($params === null) {
+            $params = array();
+        }
         $params['identifier'] = $this->identifier;
         $params['contentClass'] = $this->getContentClass();
         $object = new ContentObject($params);

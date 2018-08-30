@@ -15,23 +15,62 @@ use Aplia\Content\ContentObjectAttribute;
 use eZContentClass;
 use eZContentObject;
 use eZContentObjectTreeNode;
+use eZNodeAssignment;
+use eZContentCache;
+use eZContentCacheManager;
 
+/**
+ * Manager for eZContentObject instances, makes it easy to create new objects
+ * or modify existing ones.
+ * 
+ * To create a new object do:
+ * @code
+ * $object = new ContentObject(array('identifier' => 'folder'));
+ * $object->setAttibute('title', 'My folder');
+ * $object->create();
+ * @endcode
+ * 
+ * To update an existing object pass the id or uuid (remote id):
+ * @code
+ * $object = new ContentObject(array('uuid' => 'abcdef'));
+ * $object->setAttibute('title', 'My folder');
+ * $object->update();
+ * @endcode
+ * 
+ * To manage locations use addLocation, syncLocation and removeLocation
+ * @code
+ * $object = new ContentObject(array('uuid' => 'abcdef'));
+ * $object->addLocation(5); // Adds to Users node
+ * $object->removeLocation(2); // Removes from Content
+ * $object->update();
+ * @endcode
+ * 
+ */
 class ContentObject
 {
     public $id;
     public $uuid;
-    public $identifier;
     public $languageCode;
     public $isInWorkflow = false;
-    public $locations;
+    public $clearCache = true;
     public $newVersion;
     public $attributes = array();
     public $attributesChange = array();
 
     public $contentObject;
     public $contentVersion;
-    public $contentClass;
     public $dataMap;
+
+    /*
+     Properties:
+     $contentClass;
+     $identifier;
+     $locations;
+    */
+
+    protected $_contentClass = 'unset';
+    protected $_identifier;
+    protected $_locations;
 
     /**
      * Wraps the procedure for creating or updating content objects into a
@@ -76,6 +115,9 @@ class ContentObject
             if (isset($params['languageCode'])) {
                 $this->languageCode = $params['languageCode'];
             }
+            if (isset($params['clearCache'])) {
+                $this->clearCache = $params['clearCache'];
+            }
             $this->newVersion = Arr::get($params, 'newVersion', false);
             if (isset($params['contentNode']) && !isset($params['contentObject'])) {
                 if (!($params['contentNode'] instanceof eZContentObjectTreeNode)) {
@@ -88,65 +130,307 @@ class ContentObject
                     throw new ValueError("Parameter 'contentObject' is not an instance of eZContentObject");
                 }
                 $this->contentObject = $params['contentObject'];
-                $nodes = $this->contentObject->assignedNodes();
-                foreach ($nodes as $node) {
-                    $this->locations[] = array(
-                        'parent_id' => $node->attribute('node_id'),
-                        'parent_node' => $node,
-                        'is_main' => $node->isMain(),
-                    );
-                }
                 $params['contentClass'] = $this->contentObject->contentClass();
             }
             if (isset($params['contentClass'])) {
                 if (!($params['contentClass'] instanceof eZContentClass)) {
                     throw new ValueError("Parameter 'contentClass' is not an instance of eZContentClass");
                 }
-                $this->contentClass = $params['contentClass'];
+                $this->_contentClass = $params['contentClass'];
+                $this->_identifier = $this->_contentClass->attribute('identifier');
             }
             if (isset($params['locations'])) {
                 $locations = $params['locations'];
                 foreach ($locations as $idx => $location) {
-                    if (!is_array($location)) {
-                        $location = array('parent_id' => $location);
-                    }
-                    if (!isset($location['parent_id']) && !isset($location['parent_node']) && !isset($location['parent_uuid'])) {
-                        throw new UnsetValueError("No 'parent_id', 'parent_uuid' or 'parent_node' value is set for location[$idx]");
-                    }
-                    if (isset($location['parent_id'])) {
-                        if ($location['parent_id'] instanceof \eZContentObjectTreeNode) {
-                            $location['parent_id'] = $location['parent_id']->attribute('node_id');
-                        } elseif ($location['parent_id'] instanceof \eZContentObject) {
-                            $location['parent_id'] = $location['parent_id']->attribute('main_node_id');
-                        }
-                    }
-                    if (!isset($location['is_main'])) {
-                        $location['is_main'] = False;
-                    }
-                    $locations[$idx] = $location;
-                }
-                $this->locations = $this->locations ? array_merge($this->locations, $locations) : $locations;
-            }
-
-            // Ensure the locations array has the correct structure, and figure out a main location
-            if ($this->locations) {
-                $hasMain = false;
-                foreach ($this->locations as $idx => $location) {
-                    if ($location['is_main']) {
-                        if ($hasMain) {
-                            throw new ImproperlyConfigured("Only one location can be marked as main");
-                        }
-                        $hasMain = true;
-                    }
-                }
-                if (!$hasMain && $this->locations) {
-                    $this->locations[0]['is_main'] = true;
+                    $this->addLocation($location);
                 }
             }
         }
+
         if ($this->contentObject) {
             $this->loadContentObject();
         }
+    }
+
+    /**
+     * Ensure the locations array has the correct structure, and figure out a main location.
+     */
+    protected function adjustMainLocation($requireMain)
+    {
+        if (!$this->_locations) {
+            return;
+        }
+        $hasMain = false;
+        foreach ($this->_locations as $idx => $location) {
+            if ($location['is_main']) {
+                if ($hasMain) {
+                    throw new ImproperlyConfigured("Only one location can be marked as main");
+                }
+                $hasMain = true;
+            }
+        }
+        // Only set a main node if it is required, for instance adding a new
+        // location to an existing object does not require adjusting main node
+        if (!$hasMain && $this->_locations && $requireMain) {
+            $this->_locations[0]['is_main'] = true;
+        }
+    }
+
+    /**
+     * Add a new location to object, the parent node must not already have a
+     * child node for the given object.
+     * 
+     * The simplest way is to just specify the parent node ID
+     * @code
+     * addLocation(42, array())
+     * @endcode
+     * 
+     * To set addition fields use a secondary array.
+     * @code
+     * addLocation(42, array(
+     *   'sort_by' => 'name',
+     * ))
+     * @endcode
+     * 
+     * If you need set multiple entries or use uuid for parent just pass one array
+     * @code
+     * addLocation(array(
+     *   'parent_uuid' => 'abcdef',
+     *   'sort_by' => 'name',
+     * ))
+     * @endcode
+     * 
+     * @return self
+     */
+    public function addLocation($location, $fields=null)
+    {
+        $argc = func_num_args();
+        if ($argc >= 2) {
+            $location = $this->processLocationValue($location);
+            if ($fields) {
+                $location = array_merge($fields, $location);
+            }
+        } else if ($argc === 1) {
+            $location = $this->processLocationValue($location);
+        }
+        $location = $this->processLocationEntry($location);
+        if ($this->_locations === null) {
+            $this->_locations = array();
+        }
+        $this->_locations[] = $location;
+
+        return $this;
+    }
+
+    /**
+     * Remove a location from the object.
+     * 
+     * The simplest way is to just specify the parent node ID
+     * @code
+     * removeLocation(42)
+     * @endcode
+     * 
+     * If you need specifiy uuid or pass a node object use an array
+     * @code
+     * removeLocation(array(
+     *   'parent_uuid' => 'abcdef',
+     * ))
+     * @endcode
+     * 
+     * @code
+     * removeLocation(array(
+     *   'node' => $node,
+     * ))
+     * @endcode
+     * 
+     * @return self
+     */
+    public function removeLocation($location)
+    {
+        $location = $this->processLocationValue($location);
+        $location = $this->processLocationEntry($location, /*checkExisting*/true);
+        if (!isset($location['node'])) {
+            throw new CreationError("Cannot remove location without a node or parent");
+        }
+        $location['status'] = 'remove';
+
+        if ($this->_locations === null) {
+            $this->_locations = array();
+        }
+        $this->_locations[] = $location;
+
+        return $this;
+    }
+
+    /**
+     * Add a new location or update an existing one.
+     * The location is determined by parent_id, parent_uuid or parent_node.
+     * 
+     * If 'node' is passed it is assumed to already exist.
+     * 
+     * The simplest way is to just specify the parent node ID
+     * @code
+     * syncLocation(42, array())
+     * @endcode
+     * 
+     * To set addition fields use a secondary array.
+     * @code
+     * syncLocation(42, array(
+     *   'sort_by' => 'name',
+     * ))
+     * @endcode
+     * 
+     * If you need set multiple entries or use uuid for parent just pass one array
+     * @code
+     * syncLocation(array(
+     *   'parent_uuid' => 'abcdef',
+     *   'sort_by' => 'name',
+     * ))
+     * @endcode
+     * 
+     * @return self
+     */
+    public function syncLocation($location, $fields=null)
+    {
+        $argc = func_num_args();
+        if ($argc >= 2) {
+            $location = $this->processLocationValue($location);
+            if ($fields) {
+                $location = array_merge($fields, $location);
+            }
+        } else if ($argc === 1) {
+            $location = $this->processLocationValue($location);
+        }
+        $location = $this->processLocationEntry($location, /*checkExisting*/true);
+        if ($this->_locations === null) {
+            $this->_locations = array();
+        }
+        $this->_locations[] = $location;
+
+        return $this;
+    }
+
+    /**
+     * Process the location parameter by check for the type, if it is already
+     * an array it is simply returned. Otherwise it tries to detect the type
+     * of location that is passed.
+     * 
+     * - number - Used as parent node ID
+     * - eZContentObjectTreeNode - Used as parent, parent node id is extracted
+     * - eZContentObject - Used as parent object, parent node and parent node id is extracted
+     * 
+     * @return array Location entry with processed information
+     */
+    protected function processLocationValue($location)
+    {
+        if (!is_array($location)) {
+            $value = $location;
+            $location = array();
+            if ($value instanceof \eZContentObjectTreeNode) {
+                $parentNode = $value;
+                $location['parent_id'] = $parentNode->attribute('node_id');
+                $location['parent_node'] = $parentNode;
+            } elseif ($value instanceof \eZContentObject) {
+                $location['parent_id'] = $value->attribute('main_node_id');
+            } else {
+                $location['parent_id'] = $value;
+            }
+        }
+        return $location;
+    }
+
+    /**
+     * Process information by taking implicit data and setting the explicit
+     * data as is needed by other methods in this class.
+     * Parent id is determined by checking parent_id, parent_uuid, parent_node or node.
+     * 
+     * @return array Location entry with processed information
+     */
+    protected function processLocationEntry(array $location, $checkExisting=false)
+    {
+        $objectId = null;
+        $contentObject = null;
+        if ($checkExisting) {
+            try {
+                $this->loadContentObject();
+                $contentObject = $this->contentObject;
+                if ($contentObject) {
+                    $objectId = $contentObject->attribute('id');
+                }
+            } catch (ObjectDoesNotExist $e) {
+                if (isset($location['node'])) {
+                    throw ValueError("Location has 'node' entry but object does not exist");
+                }
+                // Object does not exist, assuming location is meant to be created
+            }
+        }
+
+        if (!isset($location['parent_id']) && !isset($location['parent_node']) && !isset($location['parent_uuid']) && !isset($location['node'])) {
+            throw new UnsetValueError("No 'parent_id', 'parent_uuid', 'parent_node' or 'node' value is set for location");
+        }
+
+        // If a node was passed the location should not be created but rather updated or moved
+        if (isset($location['node'])) {
+            if (!($location['node'] instanceof eZContentObjectTreeNode)) {
+                throw TypeError("Location has 'node' entry but it is not a eZContentObjectTreeNode instance");
+            }
+            // If we have a node but no parent info is given use the nodes parent
+            if (!isset($location['parent_id']) && !isset($location['parent_node']) || !isset($location['parent_uuid'])) {
+                $location['parent_node'] = $location['node']->parentNode();
+                $location['parent_id'] = $location['parent_node']->attribute('node_id');
+            }
+        }
+
+        if ($checkExisting && !isset($location['parent_id'])) {
+            if (isset($location['parent_node'])) {
+                $location['parent_id'] = $location['parent_node']->attribute('node_id');
+            } else if (isset($location['parent_uuid'])) {
+                $parentNode = eZContentObjectTreeNode::fetchByRemoteID($location['parent_uuid']);
+                $location['parent_id'] = $parentNode->attribute('node_id');
+                $location['parent_node'] = $parentNode;
+            } 
+        }
+        if (!isset($location['is_main'])) {
+            $location['is_main'] = false;
+        }
+
+        $node = null;
+        if (isset($location['node'])) {
+            $node = $location['node'];
+        }
+        if ($checkExisting && !$node && $contentObject) {
+            if (isset($location['node_id'])) {
+                $node = eZContentObjectTreeNode::fetch($location['node_id']);
+                if (!$node) {
+                    throw new ValueError("Location has node_id=" . $location['node_id'] . " but the node does not exist");
+                }
+            }
+            if (!$node) {
+               $node = eZContentObjectTreeNode::fetchNode($objectId, $location['parent_id']);
+            }
+            $location['node'] = $node;
+        }
+
+        if ($node) {
+            // If the parent of the existing node is different than the specified parent then
+            // it should be moved, otherwise it only needs update of attributes (if any)
+            if ($node->attribute('parent_node_id') == $location['parent_id']) {
+                $location['status'] = 'update';
+            } else {
+                $location['status'] = 'move';
+            }
+        } else {
+            $location['status'] = 'new';
+        }
+
+        // Decode sort_by into sort_field and sort_order
+        if (isset($location['sort_by'])) {
+            list($sortField, $sortOrder) = ContentType::decodeSortBy($location['sort_by']);
+            $location['sort_field'] = $sortField;
+            $location['sort_order'] = $sortOrder;
+        }
+
+        return $location;
     }
 
     public function resetPending()
@@ -154,6 +438,13 @@ class ContentObject
         $this->attributesChange = array();
     }
 
+    /**
+     * Creates the content object using current fields, attributes and locations.
+     * If the content object already exists it throws an exception.
+     * 
+     * @param $publish If true it publishes the new version after creating it
+     * @return self
+     */
     public function create($publish = true)
     {
         $fields = array();
@@ -173,15 +464,15 @@ class ContentObject
             $fields['id'] = $this->id;
         }
         if (!$this->contentClass) {
-            $this->contentClass = eZContentClass::fetchByIdentifier($this->identifier);
             if (!is_object($this->contentClass)) {
                 throw new ObjectDoesNotExist("Invalid content class identifier, no content class found: $this->identifier");
             }
         }
 
-        if (!$this->locations) {
+        if (!$this->_locations) {
             throw new ImproperlyConfigured("No locations set, cannot create object");
         }
+        $this->adjustMainLocation(/*requireMain*/true);
 
         $contentClassID = $this->contentClass->attribute('id');
         $languageCode = $this->languageCode;
@@ -198,10 +489,11 @@ class ContentObject
         }
 
         $this->contentObject = self::createWithNodeAssignment(
-            $this->locations,
+            $this->_locations,
             $contentClassID,
             $languageCode,
-            $this->uuid ? $this->uuid : false
+            $this->uuid ? $this->uuid : false,
+            $this->contentObject
         );
         if (!$this->contentObject) {
             throw new CreationError('Failed to create content object for class: ' . $this->identifier);
@@ -270,11 +562,22 @@ class ContentObject
         return $this;
     }
 
+    /**
+     * Remove content object and related locations without adding to archive.
+     * 
+     * @return self
+     */
     public function remove()
     {
         $this->_remove(true);
+        return $this;
     }
 
+    /**
+     * Remove content object and place it in archive.
+     * 
+     * @return self
+     */
     public function archive()
     {
         $this->_remove(false);
@@ -325,19 +628,8 @@ class ContentObject
             $this->uuid = null;
             $this->id = null;
         }
-        if ($this->contentClass === null) {
-            $this->contentClass = $this->contentObject->contentClass();
-        }
-        if ($this->locations === null) {
-            $this->locations = array();
-            $nodes = $this->contentObject->assignedNodes();
-            foreach ($nodes as $node) {
-                $this->locations[] = array(
-                    'parent_id' => $node->attribute('node_id'),
-                    'parent_node' => $node,
-                    'is_main' => $node->isMain(),
-                );
-            }
+        if (!is_object($this->_contentClass)) {
+            $this->_contentClass = $this->contentObject->contentClass();
         }
         if ($this->dataMap === null) {
             if ($this->contentVersion !== null) {
@@ -354,65 +646,103 @@ class ContentObject
     }
 
     /**
+     * Load locations from content object and adds them as locations.
+     */
+    protected function loadLocations()
+    {
+        if ($this->_locations === null) {
+            $this->_locations = array();
+        }
+        $nodes = $this->contentObject->assignedNodes();
+        foreach ($nodes as $node) {
+            $this->_locations[] = array(
+                'parent_id' => $node->attribute('parent_node_id'),
+                'node' => $node,
+                'is_main' => $node->isMain(),
+                'status' => 'update',
+            );
+        }
+    }
+
+    /**
      * Update an existing object by modifying the attributes.
      *
      * If newVersion is true then it will first create a new version
      * and update the fields in that version, the new version will
      * then be published.
      *
-     * @return The current instance, allows for chaining calls.
+     * @return self The current instance, allows for chaining calls.
      */
     public function update()
     {
         // Make sure we have a content object, locations and data map
         $this->loadContentObject();
 
+        // If no locations has been set load from the object
+        if ($this->_locations === null) {
+            $this->loadLocations();
+        }
+
+        $contentObject = $this->contentObject;
+        $objectId = $contentObject->attribute('id');
+        $modifiedObject = false;
         $syncFields = array();
-        if ($this->uuid != $this->contentObject->attribute('remote_id')) {
-            $this->contentObject->setAttribute('remote_id', $this->uuid);
+        if ($this->uuid && $this->uuid != $contentObject->attribute('remote_id')) {
+            $contentObject->setAttribute('remote_id', $this->uuid);
             $syncFields[] = 'remote_id';
+            $modifiedObject = true;
         }
         if ($syncFields) {
-            $this->contentObject->sync($syncFields);
+            $contentObject->sync($syncFields);
         }
         $publish = false;
-        $contentVersionNo = $this->contentObject->attribute('current_version');
+        $contentVersionNo = $contentObject->attribute('current_version');
 
-        // Create a new version and update dataMap with new attributes
-        if ($this->newVersion) {
-            $languageCode = false;
-            $copyFromLanguageCode = false;
-            $this->contentVersion = $this->contentObject->createNewVersion(
-                /*$copyFromVersion*/false, /*$versionCheck*/true, $languageCode, $copyFromLanguageCode);
-            $this->dataMap = $this->contentVersion->dataMap();
-            $contentVersionNo = $this->contentVersion->attribute('version');
-            $publish = true;
+        $db = \eZDB::instance();
+        $db->begin();
+        try {
+            // Create a new version and update dataMap with new attributes
+            if ($this->newVersion) {
+                $languageCode = false;
+                $copyFromLanguageCode = false;
+                $this->contentVersion = $contentObject->createNewVersion(
+                    /*$copyFromVersion*/false, /*$versionCheck*/true, $languageCode, $copyFromLanguageCode);
+                $this->dataMap = $this->contentVersion->dataMap();
+                $contentVersionNo = $this->contentVersion->attribute('version');
+                $publish = true;
+            }
+
+            if ($this->attributesChange) {
+                $modifiedObject = true;
+            }
+            foreach ($this->attributesChange as $attr) {
+                $attribute = $this->updateAttribute($attr);
+                $contentAttribute = $attribute->contentAttribute;
+                $this->attributes[$contentAttribute->attribute('contentclass_attribute_identifier')] = $attribute;
+            }
+            $this->attributesChange = array();
+
+            // Update name entries for this version/language
+            $languageCode = $contentObject->currentLanguage();
+            $name = $this->contentClass->contentObjectName($contentObject, $contentVersionNo, $languageCode);
+            $contentObject->setName($name);
+            $contentObject->store();
+        } catch (\Exception $e) {
+            $db->rollback();
+            throw $e;
         }
-
-        foreach ($this->attributesChange as $attr) {
-            $attribute = $this->updateAttribute($attr);
-            $contentAttribute = $attribute->contentAttribute;
-            $this->attributes[$contentAttribute->attribute('contentclass_attribute_identifier')] = $attribute;
-        }
-        $this->attributesChange = array();
-
-        // Update name entries for this version/language
-        $languageCode = $this->contentObject->currentLanguage();
-        $name = $this->contentClass->contentObjectName($this->contentObject, $contentVersionNo, $languageCode);
-        $this->contentObject->setName($name);
-        $this->contentObject->store();
+        $db->commit();
 
         if ($publish) {
             // Getting the current transaction counter to check if all transactions are committed during content/publish operation (see below)
-            $db = \eZDB::instance();
             $transactionCounter = $db->transactionCounter();
             $operationResult = \eZOperationHandler::execute(
                 'content', 'publish', array(
-                    'object_id' => $this->contentObject->attribute('id'),
+                    'object_id' => $contentObject->attribute('id'),
                     'version'   => $contentVersionNo,
             ));
             if ($operationResult === null) {
-                throw new ContentError("Failed to publish content object with ID: " . $this->contentObject->attribute('id') . " and version: " . $contentVersionNo);
+                throw new ContentError("Failed to publish content object with ID: " . $contentObject->attribute('id') . " and version: " . $contentVersionNo);
             }
             if ($operationResult['status'] == 3) {
                 $this->isInWorkflow = true;
@@ -427,14 +757,214 @@ class ContentObject
                 }
 
             } else {
-                $mainNode = $this->contentObject->mainNode();
+                $mainNode = $contentObject->mainNode();
                 if (!$mainNode) {
                     throw new CreationError("Failed to create a main node for the Content Object");
                 }
             }
+            $modifiedObject = true;
+        }
+
+        // Make sure we no more than 1 main node
+        $this->adjustMainLocation(/*requireMain*/false);
+
+        // Load parent nodes and determine main node
+        $mainParentNode = self::prepareLocations($this->_locations);
+
+        $newLocations = array();
+        $removeLocations = array();
+        $updateLocations = array();
+        $modifiedNodes = array();
+        $this->printLocations();
+        foreach ($this->_locations as $idx => $location) {
+            if ($location['status'] == 'new') {
+                if (isset($location['node'])) {
+                    throw new ValueError("Location index $idx is a new location but already has a 'node' entry");
+                }
+                $newLocations[$idx] = $location;
+            } else if ($location['status'] == 'remove') {
+                $removeLocations[$idx] = $location;
+            } else if ($location['status'] == 'update' || $location['status'] == 'move') {
+                if (!isset($location['node'])) {
+                    throw new UnsetValueError("Location index $idx contains '" . $location['status'] . "' entry but no 'node' was found");
+                }
+                $updateLocations[$idx] = $location;
+            } else if ($location['status'] == 'nop') {
+                // Ignore the entry
+            } else {
+                throw new ValueError("Unknown location status '" . $location['status'] . "' for index $idx");
+            }
+        }
+
+        $db->begin();
+        try {
+            $newMainNode = null;
+            $newMainNodeId = false;
+            $newMainParentNodeId = null;
+
+            if ($newLocations) {
+                foreach ($newLocations as $idx => $location) {
+                    $parentNode = $location['parent_node'];
+                    $parentNodeId = $parentNode->attribute('node_id');
+                    $existingNode = eZContentObjectTreeNode::fetchNode($objectId, $parentNodeId);
+                    if ($existingNode) {
+                        throw new CreationError("Cannot create new node as parent of $parentNodeId for object $objectId, a node already exists");
+                    }
+                    $isMain = $location['is_main'];
+                    $parentObject = $parentNode->attribute( 'object' );
+                    $node = $this->createLocation($parentNode);
+                    $this->_locations[$idx]['node'] = $node;
+                    $this->_locations[$idx]['status'] = 'existing';
+
+                    $changes = $this->updateNode($node, $location);
+                    if ($isMain && $node->attribute('main_node_id') != $node->attribute('node_id')) {
+                        $newMainNode = $node;
+                        $newMainNodeId = $node->attribute('node_id');
+                        $newMainParentNodeId = $node->attribute('parent_node_id');
+                    }
+                    if ($changes) {
+                        $node->sync($changes);
+                    }
+                    $node->updateSubTreePath();
+                    $modifiedNodes[] = $node;
+                    $this->locations[$idx]['node'] = $node;
+                    $this->locations[$idx]['status'] = 'nop';
+                }
+            }
+
+            // TODO: Remove locations
+            if ($removeLocations) {
+                foreach ($removeLocations as $idx => $location) {
+                    $node = $location['node'];
+                    $node->removeNodeFromTree();
+                    $modifiedNodes[] = $node;
+                    unset($this->locations[$idx]);
+                }
+            }
+
+            // TODO: Move/update locations
+            if ($updateLocations) {
+                foreach ($updateLocations as $idx => $location) {
+                    $node = $location['node'];
+                    $changes = $this->updateNode($node, $location);
+                    $isMain = $location['is_main'];
+                    if ($isMain && $node->attribute('main_node_id') != $node->attribute('node_id')) {
+                        $newMainNode = $node;
+                        $newMainNodeId = $node->attribute('node_id');
+                        $newMainParentNodeId = $node->attribute('parent_node_id');
+                    }
+                    $parentNodeId = $node->attribute('parent_node_id');
+                    $move = false;
+                    if (isset($location['parent_node'])) {
+                        $parentNode = $location['parent_node'];
+                        $location['parent_id'] = $parentNode->attribute('node_id');
+                        if ($parentNode->attribute('node_id') != $parentNodeId) {
+                            $move = true;
+                        }
+                    } else if (isset($location['parent_id']) && $location['parent_id'] != $parentNodeId) {
+                        $move = true;
+                    } else if (isset($location['parent_uuid'])) {
+                        $parentNode = eZContentObjectTreeNode::fetchByRemoteID($location['parent_uuid']);
+                        $location['parent_id'] = $parentNode->attribute('node_id');
+                        $location['parent_node'] = $node;
+                        if ($parentNode && $parentNode->attribute('node_id') != $parentNodeId) {
+                            $move = true;
+                        }
+                    }
+                    if ($changes) {
+                        $node->sync($changes);
+                        if ($modifiedObject && !$move) {
+                            $node->updateSubTreePath();
+                        }
+                    }
+                    if ($move) {
+                        $node->move($location['parent_id']);
+                        $node->updateSubTreePath();
+                        $changes = true;
+                    }
+                    if ($changes) {
+                        $modifiedNodes[] = $node;
+                    }
+                    $this->locations[$idx]['node'] = $node;
+                    $this->locations[$idx]['status'] = 'nop';
+                }
+            }
+
+            // If main node has changed update the tree structure and assignments
+            if ($newMainNodeId) {
+                $modifiedNodes[] = $contentObject->mainNode();
+                $modifiedNodes[] = $newMainNode;
+                eZContentObjectTreeNode::updateMainNodeID($newMainNodeId, $objectId, $contentObject->attribute('current_version'), $newMainParentNodeId);
+            }
+        } catch (\Exception $e) {
+            $db->rollback();
+            throw $e;
+        }
+        $db->commit();
+
+        if ($this->clearCache && ($modifiedNodes || $modifiedObject)) {
+            eZContentCacheManager::clearContentCacheIfNeeded($objectId);
+            eZContentObject::clearCache(array($objectId));
+            eZContentObject::expireComplexViewModeCache();
+            if ($modifiedNodes) {
+                $nodeIdList = array();
+                foreach ($modifiedNodes as $modifiedNode) {
+                    $nodeIdList[] = $modifiedNode->attribute('node_id');
+                    $parentNode = $modifiedNode->fetchParent();
+                    if ($parentNode) {
+                        eZContentCacheManager::clearContentCacheIfNeeded($parentNode->attribute('contentobject_id'));
+                    }
+                }
+                eZContentCache::cleanup($nodeIdList);
+            }
         }
 
         return $this;
+    }
+
+    /**
+     * Update node with new information from $location
+     * 
+     * @return array List of fields which are changed
+     */
+    protected function updateNode(eZContentObjectTreeNode $node, array $location)
+    {
+        $changes = array();
+        if (isset($location['uuid']) && $location['uuid'] != $node->attribute('remote_id')) {
+            $node->setAttribute('remote_id', $location['uuid']);
+            $changes[] = 'remote_id';
+        }
+        if (isset($location['sort_field']) && $location['sort_field'] != $node->attribute('sort_field')) {
+            $node->setAttribute('sort_field', $location['sort_field']);
+            $changes[] = 'sort_field';
+        }
+        if (isset($location['sort_order']) && $location['sort_order'] != $node->attribute('sort_order')) {
+            $node->setAttribute('sort_order', $location['sort_order']);
+            $changes[] = 'sort_order';
+        }
+        if (isset($location['priority']) && $location['priority'] != $node->attribute('priority')) {
+            $node->setAttribute('priority', $location['priority']);
+            $changes[] = 'priority';
+        }
+        // TODO: Handle visibility, check how it is done in eZ publish
+        return $changes;
+    }
+
+    /**
+     * Create a new node to parent node $parentNode
+     * 
+     * @return eZContentObjectTreeNode The newly created node
+     */
+    protected function createLocation($parentNode)
+    {
+        if ($parentNode instanceof eZContentObjectTreeNode) {
+            $parentNodeId = $parentNode->attribute('node_id');
+        } else {
+            $parentNodeId = $parentNode;
+        }
+        $contentObject = $this->contentObject;
+        $node = $contentObject->addLocation($parentNodeId, true);
+        return $node;
     }
 
     /**
@@ -523,14 +1053,95 @@ class ContentObject
      *
      * @return eZContentObject|null
      */
-    static function createWithNodeAssignment($locations, $contentClassID, $languageCode, $remoteID = false)
+    static function createWithNodeAssignment(&$locations, $contentClassID, $languageCode, $remoteID = false, $contentObject=null)
     {
-        $class = eZContentClass::fetch( $contentClassID );
-        // Check if the user has access to create a folder here
+        if ($contentClassID instanceof eZContentClass) {
+            $class = $contentClassID;
+        } else if ($contentClassID instanceof ContentType) {
+            $class = $contentClassID->contentClass;
+        } else {
+            $class = eZContentClass::fetch($contentClassID);
+        }
+
+        // Check if we actually got a eZContentClass object
         if (!($class instanceof eZContentClass)) {
             throw new ObjectDoesNotExist("Could not fetch Content Class with ID '$contentClassID', cannot create object");
         }
 
+        // Load parent nodes and determine main node
+        $mainParentNode = self::prepareLocations($locations);
+
+        // Set section of the newly created object to the section's value of it's parent object
+        $sectionID = 0;
+        if (!$contentObject) {
+            if ($mainParentNode) {
+                $mainParentObject = $mainParentNode->attribute( 'object' );
+                $sectionID = $mainParentObject->attribute( 'section_id' );
+            }
+        }
+
+        $db = \eZDB::instance();
+        $db->begin();
+        if (!$contentObject) {
+            $contentObject = $class->instantiateIn( $languageCode, false, $sectionID, false, \eZContentObjectVersion::STATUS_INTERNAL_DRAFT );
+            if (!$contentObject) {
+                throw new CreationError("Could not create Content Object");
+            }
+        }
+
+        // Create node-assignments for objects, mainly used for creating nodes upon publishing the first version
+        foreach ($locations as $idx => $location) {
+            if ($location['status'] == 'new') {
+            } else if ($location['status'] == 'remove' || $location['status'] == 'move') {
+                // Makes no sense to remove or move node when object is new, skip it
+                unset($locations[$idx]);
+                continue;
+            } else if ($location['status'] == 'update') {
+                if (!isset($location['node'])) {
+                    throw new UnsetValueError("Location index $idx contains 'update' entry but no 'node' was found");
+                }
+                // The object is new so the node clearly does not belong to it,
+                // but this could be used to swap object for node to this new node
+                // For now skip it
+                unset($locations[$idx]);
+                continue;
+            } else if ($location['status'] === 'nop') {
+                // Nothing to do
+                unset($locations[$idx]);
+                continue;
+            }else {
+                throw new ValueError("Unknown location status '" . $location['status'] . "' for index $idx");
+            }
+            $parentNode = $location['parent_node'];
+            $parentNodeId = $parentNode->attribute('node_id');
+            $isMain = $location['is_main'];
+            $parentObject = $parentNode->attribute( 'object' );
+            $existingAssignment = eZNodeAssignment::fetch($contentObject->attribute('id'), $contentObject->attribute('current_version'), $parentNodeId);
+            if (!$existingAssignment) {
+                $sortField = isset($location['sort_field']) ? $location['sort_field'] : $class->attribute('sort_field');
+                $sortOrder = isset($location['sort_order']) ? $location['sort_order'] : $class->attribute('sort_order');
+                $nodeAssignment = $contentObject->createNodeAssignment(
+                    $parentNodeId,
+                    $isMain, $isMain ? $remoteID : false,
+                    $sortField,
+                    $sortOrder
+                );
+            }
+            unset($locations[$idx]);
+        }
+        $db->commit();
+        return $contentObject;
+    }
+
+    /**
+     * Make sure all locations have their required keys set.
+     * Parent node is loaded from DB and place in 'parent_node' and main
+     * parent node is determined.
+     * 
+     * @return eZContentObjectTreeNode The main parent node
+     */
+    protected function prepareLocations(array &$locations)
+    {
         $mainParentNode = null;
         foreach ($locations as $idx => $location) {
             $parentNode = isset($location['parent_node']) ? $location['parent_node'] : null;
@@ -553,34 +1164,7 @@ class ContentObject
                 $mainParentNode = $parentNode;
             }
         }
-
-        // Set section of the newly created object to the section's value of it's parent object
-        $sectionID = 0;
-        if ($mainParentNode) {
-            $mainParentObject = $mainParentNode->attribute( 'object' );
-            $sectionID = $mainParentObject->attribute( 'section_id' );
-        }
-
-        $db = \eZDB::instance();
-        $db->begin();
-        $contentObject = $class->instantiateIn( $languageCode, false, $sectionID, false, \eZContentObjectVersion::STATUS_INTERNAL_DRAFT );
-        if (!$contentObject) {
-            throw new CreationError("Could not create Content Object");
-        }
-
-        foreach ($locations as $location) {
-            $parentNode = $location['parent_node'];
-            $isMain = $location['is_main'];
-            $parentObject = $parentNode->attribute( 'object' );
-            $nodeAssignment = $contentObject->createNodeAssignment(
-                $parentNode->attribute( 'node_id' ),
-                $isMain, $isMain ? $remoteID : false,
-                $class->attribute( 'sort_field' ),
-                $class->attribute( 'sort_order' )
-            );
-        }
-        $db->commit();
-        return $contentObject;
+        return $mainParentNode;
     }
 
     /**
@@ -622,5 +1206,50 @@ class ContentObject
             return null;
         }
         throw new AttributeError("No such content attribute: $identifer");
+    }
+
+    public function __isset($name)
+    {
+        return $name === 'contentClass' || $name === 'identifier' || $name == 'locations';
+    }
+
+    public function __get($name)
+    {
+        if ($name === 'contentClass') {
+            if ($this->_contentClass === 'unset') {
+                if (isset($this->identifier)) {
+                    $this->_contentClass = eZContentClass::fetchByIdentifier($this->identifier);
+                } else {
+                    $this->_contentClass = null;
+                }
+            }
+            return $this->_contentClass;
+        } else if ($name === 'identifier') {
+            return $this->_identifier;
+        } else if ($name === 'locations') {
+            if ($this->_locations === null) {
+                $this->loadLocations();
+            }
+            return $this->_locations;
+        } else {
+            throw new AttributeError("Unknown attribute $name on ContentObject instance");
+        }
+    }
+
+    public function __set($name, $value)
+    {
+        if ($name === 'identifier') {
+            if ($this->_identifier == $value) {
+                return;
+            }
+            $this->_identifier = $value;
+            $this->_contentClass = 'unset';
+        } else {
+            if (isset($this->$name)) {
+                throw new AttributeError("Attribute $name cannot be modified on ContentObject instance");
+            } else {
+                throw new AttributeError("Unknown attribute $name on ContentObject instance");
+            }
+        }
     }
 }
