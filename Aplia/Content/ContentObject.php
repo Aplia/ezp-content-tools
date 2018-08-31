@@ -53,6 +53,7 @@ class ContentObject
     public $languageCode;
     public $isInWorkflow = false;
     public $clearCache = true;
+    public $updateNodePath = true;
     public $newVersion;
     public $attributes = array();
     public $attributesChange = array();
@@ -71,6 +72,7 @@ class ContentObject
     protected $_contentClass = 'unset';
     protected $_identifier;
     protected $_locations;
+    protected $_nodes;
 
     /**
      * Wraps the procedure for creating or updating content objects into a
@@ -117,6 +119,9 @@ class ContentObject
             }
             if (isset($params['clearCache'])) {
                 $this->clearCache = $params['clearCache'];
+            }
+            if (isset($params['updateNodePath'])) {
+                $this->updateNodePath = $params['updateNodePath'];
             }
             $this->newVersion = Arr::get($params, 'newVersion', false);
             if (isset($params['contentNode']) && !isset($params['contentObject'])) {
@@ -596,6 +601,37 @@ class ContentObject
             }
         }
 
+        foreach ($this->locations as $location) {
+            if ($location['status'] !== 'new') {
+                continue;
+            }
+            if (!isset($location['uuid'])) {
+                // No uuid, nothing to do
+                continue;
+            }
+            $node = isset($location['node']) ? $location['node'] : null;
+            if (!$node) {
+                $parentId = isset($location['parent_id']) ? $location['parent_id'] : null;
+                if (isset($location['parent_node'])) {
+                    $parentId = $location['parent_node']->attribute('node_id');
+                } else if (isset($location['parent_uuid'])) {
+                    $parentNode = eZContentObjectTreeNode::fetchByRemoteID($location['parent_uuid']);
+                    $parentId = $parentNode->attribute('node_id');
+                } else {
+                    // Cannot determine parent id, skipping uuid change
+                    continue;
+                }
+                $node = eZContentObjectTreeNode::fetchNode($this->contentObject->attribute('id'), $parentId);
+            }
+            if ($node) {
+                $node->setAttribute('remote_id', $location['uuid']);
+                $node->sync(array('remote_id'));
+            }
+        }
+        $this->_locations = null;
+
+        $this->_nodes = null;
+
         return $this;
     }
 
@@ -697,6 +733,27 @@ class ContentObject
                 'node' => $node,
                 'is_main' => $node->isMain(),
                 'status' => 'update',
+            );
+        }
+    }
+
+    /**
+     * Load nodes from content object and adds them to $nodes.
+     */
+    protected function loadNodes()
+    {
+        if ($this->_nodes === null) {
+            $this->_nodes = array();
+        }
+        $nodes = $this->contentObject->assignedNodes();
+        foreach ($nodes as $node) {
+            $nodeUuid = $node->attribute('remote_id');
+            $this->_nodes[$nodeUuid] = array(
+                'uuid' => $nodeUuid,
+                'parent_id' => $node->attribute('parent_node_id'),
+                'id' => $node->attribute('node_id'),
+                'node' => $node,
+                'is_main' => $node->isMain(),
             );
         }
     }
@@ -812,7 +869,6 @@ class ContentObject
         $removeLocations = array();
         $updateLocations = array();
         $modifiedNodes = array();
-        $this->printLocations();
         foreach ($this->_locations as $idx => $location) {
             if ($location['status'] == 'new') {
                 if (isset($location['node'])) {
@@ -862,7 +918,9 @@ class ContentObject
                     if ($changes) {
                         $node->sync($changes);
                     }
-                    $node->updateSubTreePath();
+                    if ($this->updateNodePath) {
+                        $node->updateSubTreePath();
+                    }
                     $modifiedNodes[] = $node;
                     $this->locations[$idx]['node'] = $node;
                     $this->locations[$idx]['status'] = 'nop';
@@ -875,7 +933,7 @@ class ContentObject
                     $node = $location['node'];
                     $node->removeNodeFromTree();
                     $modifiedNodes[] = $node;
-                    unset($this->locations[$idx]);
+                    unset($this->_locations[$idx]);
                 }
             }
 
@@ -910,20 +968,23 @@ class ContentObject
                     }
                     if ($changes) {
                         $node->sync($changes);
-                        if ($modifiedObject && !$move) {
-                            $node->updateSubTreePath();
-                        }
+                    }
+                    $forceUpdate = isset($location['update']) ? $location['update'] : false;
+                    if ($modifiedObject || $forceUpdate) {
+                        $changes = true;
                     }
                     if ($move) {
                         $node->move($location['parent_id']);
-                        $node->updateSubTreePath();
                         $changes = true;
                     }
                     if ($changes) {
+                        if ($this->updateNodePath) {
+                            $node->updateSubTreePath();
+                        }
                         $modifiedNodes[] = $node;
                     }
-                    $this->locations[$idx]['node'] = $node;
-                    $this->locations[$idx]['status'] = 'nop';
+                    $this->_locations[$idx]['node'] = $node;
+                    $this->_locations[$idx]['status'] = 'nop';
                 }
             }
 
@@ -955,6 +1016,8 @@ class ContentObject
                 eZContentCache::cleanup($nodeIdList);
             }
         }
+
+        $this->_nodes = null;
 
         return $this;
     }
@@ -1174,7 +1237,6 @@ class ContentObject
             if ($location['status'] == 'new') {
             } else if ($location['status'] == 'remove' || $location['status'] == 'move') {
                 // Makes no sense to remove or move node when object is new, skip it
-                unset($locations[$idx]);
                 continue;
             } else if ($location['status'] == 'update') {
                 if (!isset($location['node'])) {
@@ -1183,11 +1245,9 @@ class ContentObject
                 // The object is new so the node clearly does not belong to it,
                 // but this could be used to swap object for node to this new node
                 // For now skip it
-                unset($locations[$idx]);
                 continue;
             } else if ($location['status'] === 'nop') {
                 // Nothing to do
-                unset($locations[$idx]);
                 continue;
             }else {
                 throw new ValueError("Unknown location status '" . $location['status'] . "' for index $idx");
@@ -1200,14 +1260,14 @@ class ContentObject
             if (!$existingAssignment) {
                 $sortField = isset($location['sort_field']) ? $location['sort_field'] : $class->attribute('sort_field');
                 $sortOrder = isset($location['sort_order']) ? $location['sort_order'] : $class->attribute('sort_order');
+                // Create assignment, remote id for node needs to updated later on
                 $nodeAssignment = $contentObject->createNodeAssignment(
                     $parentNodeId,
-                    $isMain, $isMain ? $remoteID : false,
+                    $isMain, false,
                     $sortField,
                     $sortOrder
                 );
             }
-            unset($locations[$idx]);
         }
         $db->commit();
         return $contentObject;
@@ -1220,7 +1280,7 @@ class ContentObject
      * 
      * @return eZContentObjectTreeNode The main parent node
      */
-    protected function prepareLocations(array &$locations)
+    protected static function prepareLocations(array &$locations)
     {
         $mainParentNode = null;
         foreach ($locations as $idx => $location) {
@@ -1290,7 +1350,7 @@ class ContentObject
 
     public function __isset($name)
     {
-        return $name === 'contentClass' || $name === 'identifier' || $name == 'locations';
+        return $name === 'contentClass' || $name === 'identifier' || $name == 'locations' || $name == 'nodes';
     }
 
     public function __get($name)
@@ -1311,6 +1371,11 @@ class ContentObject
                 $this->loadLocations();
             }
             return $this->_locations;
+        } else if ($name === 'nodes') {
+            if ($this->_nodes === null) {
+                $this->loadNodes();
+            }
+            return $this->_nodes;
         } else {
             throw new AttributeError("Unknown attribute $name on ContentObject instance");
         }
