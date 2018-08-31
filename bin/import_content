@@ -14,7 +14,9 @@ $cli = \eZCLI::instance();
 $script = \eZScript::instance(
     array(
         'description' =>
-            "Import content-bundles into eZ publish",
+            "Import content-bundles into eZ publish\n" .
+            "\n" .
+            "To define more tree nodes use content.ini and NodeSettings/RootNodes",
         'use-session' => false,
         'use-modules' => true,
         'use-extensions' => true,
@@ -22,7 +24,7 @@ $script = \eZScript::instance(
 );
 $script->startup();
 $options = $script->getOptions("[parent-node:][config:]", "", array(
-    "parent-node" => "Choose starting point for import of content objects, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id> or path:<alias-path>",
+    "parent-node" => "Choose starting point for import of content objects, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id>, path:<alias-path>, or tree:<id> e.g tree:content, tree:media, tree:users, tree:top",
 ));
 $script->initialize();
 
@@ -64,6 +66,31 @@ if (is_numeric($parentNodeId)) {
     if (!$parentNode) {
         $script->shutdown(1, "Parent node $parentNodeId for path $parentPath does not exist");
     }
+} else if (preg_match("/^tree:(.+)$/", $parentNodeId, $matches)) {
+    $treeId = $matches[1];
+    $contentIni = \eZINI::instance('content.ini');
+    if ($treeId === 'content') {
+        $parentNode = \eZContentObjectTreeNode::fetch($contentIni->variable('NodeSettings', 'RootNode'));
+    } else if ($treeId === 'media') {
+        $parentNode = \eZContentObjectTreeNode::fetch($contentIni->variable('NodeSettings', 'MediaRootNode'));
+    } else if ($treeId === 'user' || $treeId === 'users') {
+        $parentNode = \eZContentObjectTreeNode::fetch($contentIni->variable('NodeSettings', 'UserRootNode'));
+    } else if ($treeId === 'top') {
+        $parentNode = \eZContentObjectTreeNode::fetch(1);
+        $script->output("Warning: Importing nodes to the top node 1 is not recommended");
+    } else {
+        $rootNodes = array();
+        if ($contentIni->hasVariable('NodeSettings', 'RootNodes')) {
+            $rootNodes = $contentIni->variable('NodeSettings', 'RootNodes');
+        }
+        if (!isset($rootNodes[$treeId])) {
+            $script->shutdown(1, "Unknown tree structure for ID '$treeId', must be defined in content.ini");
+        }
+        $parentNode = \eZContentObjectTreeNode::fetch($rootNodes[$treeId]);
+    }
+    if (!$parentNode) {
+        $script->shutdown(1, "Root node for tree $treeId was not found");
+    }
 } else if ($parentNodeId) {
     $parentPath = $parentNodeId;
     $parentNodeId = \eZURLAliasML::fetchNodeIDByPath($parentPath);
@@ -75,7 +102,8 @@ if (is_numeric($parentNodeId)) {
         $script->shutdown(1, "Parent node $parentNodeId for path $parentPath does not exist");
     }
 } else {
-    $parentNode = \eZContentObjectTreeNode::fetch(1);
+    $contentIni = \eZINI::instance('content.ini');
+    $parentNode = \eZContentObjectTreeNode::fetch($contentIni->variable('NodeSettings', 'RootNode'));
 }
 $configFile = Arr::get($options, 'config');
 
