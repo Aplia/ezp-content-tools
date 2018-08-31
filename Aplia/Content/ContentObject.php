@@ -2,6 +2,7 @@
 namespace Aplia\Content;
 
 use Exception;
+use DateTime;
 use Aplia\Support\Arr;
 use Aplia\Content\Exceptions\ValueError;
 use Aplia\Content\Exceptions\UnsetValueError;
@@ -72,6 +73,11 @@ class ContentObject
      * or an eZContentObjectState object.
      */
     public $states;
+    /**
+     * Force a specific published date on objects, or null to leave.
+     * Date is either specified as DateTime object or a timestamp number.
+     */
+    public $publishedDate;
     public $isInWorkflow = false;
     public $clearCache = true;
     public $updateNodePath = true;
@@ -152,6 +158,9 @@ class ContentObject
             }
             if (isset($params['states'])) {
                 $this->states = $params['states'];
+            }
+            if (isset($params['publishedDate'])) {
+                $this->publishedDate = $params['publishedDate'];
             }
             if (isset($params['clearCache'])) {
                 $this->clearCache = $params['clearCache'];
@@ -612,6 +621,14 @@ class ContentObject
         // Update name entries for this version/language
         $name = $this->contentClass->contentObjectName($this->contentObject, $this->contentObject->attribute('current_version'), $languageCode);
         $this->contentObject->setName($name, $this->contentObject->attribute('current_version'), $languageCode);
+        if ($this->publishedDate !== null) {
+            if ($this->publishedDate instanceof DateTime) {
+                $publishedDate = $this->publishedDate->getTimestamp();
+            } else {
+                $publishedDate = $this->publishedDate;
+            }
+            $this->contentObject->setAttribute('published', $publishedDate);
+        }
         $this->contentObject->store();
         $db->commit();
 
@@ -894,6 +911,14 @@ class ContentObject
             // Update name entries for this version/language
             $name = $this->contentClass->contentObjectName($contentObject, $contentVersionNo, $languageCode);
             $contentObject->setName($name, $this->contentObject->attribute('current_version'), $languageCode);
+            if ($this->publishedDate !== null) {
+                if ($this->publishedDate instanceof DateTime) {
+                    $publishedDate = $this->publishedDate->getTimestamp();
+                } else {
+                    $publishedDate = $this->publishedDate;
+                }
+                $contentObject->setAttribute('published', $publishedDate);
+            }
             $contentObject->store();
         } catch (\Exception $e) {
             $db->rollback();
@@ -1001,7 +1026,6 @@ class ContentObject
                 }
             }
 
-            // TODO: Remove locations
             if ($removeLocations) {
                 foreach ($removeLocations as $idx => $location) {
                     $node = $location['node'];
@@ -1011,7 +1035,7 @@ class ContentObject
                 }
             }
 
-            // TODO: Move/update locations
+            // TODO: Move locations
             if ($updateLocations) {
                 foreach ($updateLocations as $idx => $location) {
                     $node = $location['node'];
