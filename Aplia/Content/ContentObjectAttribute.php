@@ -470,7 +470,7 @@ class ContentObjectAttribute
             // Then store the xml text
             $attribute->setAttribute('data_text', $value->rawText);
         } else {
-            throw new ValueError("Cannot update attribute data for '{$this->identifier}', unsupported content value: $value");
+            throw new ValueError("Cannot update attribute data for '{$this->identifier}', unsupported content value: " . var_export($value, true));
         }
     }
 
