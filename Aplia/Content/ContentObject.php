@@ -114,7 +114,9 @@ class ContentObject
             if (isset($params['identifier'])) {
                 $this->identifier = $params['identifier'];
             }
-            if (isset($params['languageCode'])) {
+            if (isset($params['language'])) {
+                $this->languageCode = $params['language'];
+            } else if (isset($params['languageCode'])) {
                 $this->languageCode = $params['languageCode'];
             }
             if (isset($params['clearCache'])) {
@@ -562,7 +564,7 @@ class ContentObject
 
         // Update name entries for this version/language
         $name = $this->contentClass->contentObjectName($this->contentObject, $this->contentObject->attribute('current_version'), $languageCode);
-        $this->contentObject->setName($name);
+        $this->contentObject->setName($name, $this->contentObject->attribute('current_version'), $languageCode);
         $this->contentObject->store();
 
         if ($publish) {
@@ -708,7 +710,8 @@ class ContentObject
             if ($this->contentVersion !== null) {
                 $this->dataMap = $this->contentVersion->dataMap();
             } else {
-                $this->dataMap = $this->contentObject->dataMap();
+                $languageCode = $this->languageCode ? $this->languageCode : false;
+                $this->dataMap = $this->contentObject->fetchDataMap(/*version*/false, $languageCode);
             }
         }
         if ($this->attributes === null) {
@@ -779,6 +782,13 @@ class ContentObject
 
         $contentObject = $this->contentObject;
         $objectId = $contentObject->attribute('id');
+        $languageCode = $this->languageCode ? $this->languageCode : $contentObject->currentLanguage();
+        $availableLanguages = $contentObject->availableLanguages();
+        if ($languageCode && !in_array($languageCode, $availableLanguages)) {
+            // If we require a language the object does not currently a new version must be created
+            $this->newVersion = true;
+        }
+
         $modifiedObject = false;
         $syncFields = array();
         if ($this->uuid && $this->uuid != $contentObject->attribute('remote_id')) {
@@ -797,7 +807,6 @@ class ContentObject
         try {
             // Create a new version and update dataMap with new attributes
             if ($this->newVersion) {
-                $languageCode = false;
                 $copyFromLanguageCode = false;
                 $this->contentVersion = $contentObject->createNewVersion(
                     /*$copyFromVersion*/false, /*$versionCheck*/true, $languageCode, $copyFromLanguageCode);
@@ -817,9 +826,8 @@ class ContentObject
             $this->attributesChange = array();
 
             // Update name entries for this version/language
-            $languageCode = $contentObject->currentLanguage();
             $name = $this->contentClass->contentObjectName($contentObject, $contentVersionNo, $languageCode);
-            $contentObject->setName($name);
+            $contentObject->setName($name, $this->contentObject->attribute('current_version'), $languageCode);
             $contentObject->store();
         } catch (\Exception $e) {
             $db->rollback();
@@ -1322,7 +1330,8 @@ class ContentObject
             if ($this->contentVersion !== null) {
                 $this->dataMap = $this->contentVersion->dataMap();
             } else {
-                $this->dataMap = $this->contentObject->dataMap();
+                $languageCode = $this->languageCode ? $this->languageCode : false;
+                $this->dataMap = $this->contentObject->fetchDataMap(/*version*/false, $languageCode);
             }
         }
         return $this->dataMap;
