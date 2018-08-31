@@ -125,6 +125,57 @@ if ($adminUser) {
 $db = eZDB::instance();
 $db->begin();
 
+function parseNdjson(ContentImporter $importer, $filePath) {
+    $file = fopen($filePath, "rb");
+    $hasIndex = false;
+    $buffer = "";
+    $offset = 0;
+    $newOffset = 0;
+    $count = 0;
+    while ($chunk = fread($file, 4096)) {
+        $buffer .= $chunk;
+        while (true) {
+            $recordEnd = strpos($buffer, "\n");
+            if ($recordEnd === false) {
+                break;
+            }
+            $recordData = substr($buffer, 0, $recordEnd);
+            $newOffset += strlen($recordData);
+            $buffer = substr($buffer, $recordEnd + 1);
+            $recordData = trim($recordData);
+            if ($recordData) {
+                try {
+                    $record = json_decode($recordData, /*assoc*/true);
+                } catch (\Exception $e) {
+                    $script->shutdown(1, "Failed to decode record as JSON, found at offset $offset, length " . strlen($record));
+                }
+                if ($record === null && strcmp($recordData, "null") != 0) {
+                    $script->shutdown(1, "Failed to decode record as JSON, found at offset $offset, length " . strlen($record));
+                }
+                if (!is_array($record)) {
+                    continue;
+                }
+                try {
+                    $importer->importRecord($record);
+                } catch (\Aplia\Content\Exceptions\ImportDenied $e) {
+                    throw $e;
+                } catch (\Exception $e) {
+                    throw $e;
+                    $script->shutdown(1, "Failed to import record: " . $e->getMessage());
+                }
+                if ($count == 0 && !($importer->hasIndex || !$importer->hasBundle)) {
+                    $script->shutdown(1, "The first record received must be an index or bundle, got type: " . $importer->lastRecordType);
+                }
+                $recordData = null;
+            } else {
+                // Empty record, ignore it
+            }
+            $count += 1;
+            $offset = $newOffset;
+        }
+    }
+}
+
 try {
     $importer = new ContentImporter($options);
     if ($configFile) {
@@ -137,56 +188,16 @@ try {
         if (!file_exists($filePath)) {
             $script->shutdown(1, "Import file $filePath does not exist");
         }
-        $file = fopen($filePath, "rb");
-        $hasIndex = false;
-        $buffer = "";
-        $offset = 0;
-        $newOffset = 0;
-        $count = 0;
-        while ($chunk = fread($file, 4096)) {
-            $buffer .= $chunk;
-            while (true) {
-                $recordEnd = strpos($buffer, "\n");
-                if ($recordEnd === false) {
-                    break;
-                }
-                $recordData = substr($buffer, 0, $recordEnd);
-                $newOffset += strlen($recordData);
-                $buffer = substr($buffer, $recordEnd + 1);
-                $recordData = trim($recordData);
-                if ($recordData) {
-                    try {
-                        $record = json_decode($recordData, /*assoc*/true);
-                    } catch (\Exception $e) {
-                        $script->shutdown(1, "Failed to decode record as JSON, found at offset $offset, length " . strlen($record));
-                    }
-                    if ($record === null && strcmp($recordData, "null") != 0) {
-                        $script->shutdown(1, "Failed to decode record as JSON, found at offset $offset, length " . strlen($record));
-                    }
-                    if (!is_array($record)) {
-                        continue;
-                    }
-                    try {
-                        $importer->importRecord($record);
-                    } catch (\Aplia\Content\Exceptions\ImportDenied $e) {
-                        throw $e;
-                    } catch (\Exception $e) {
-                        throw $e;
-                        $script->shutdown(1, "Failed to import record: " . $e->getMessage());
-                    }
-                    if ($count == 0 && !($importer->hasIndex || !$importer->hasBundle)) {
-                        $script->shutdown(1, "The first record received must be an index or bundle, got type: " . $importer->lastRecordType);
-                    }
-                    $recordData = null;
-                } else {
-                    // Empty record, ignore it
-                }
-                $count += 1;
-                $offset = $newOffset;
-            }
+        if (substr($filePath, -7) === '.ndjson') {
+            parseNdjson($importer, $filePath);
+        } else if (substr($filePath, -5) === '.json') {
+        } else {
+            $script->shutdown(1, "Unsupported file format $filePath, must ether be .json or .ndjson");
         }
-        $cli->output("Imported $count records");
     }
+    $cli->output("Finalizing imported data");
+    $importer->finalize();
+    $cli->output("Imported $count records");
 } catch (\Aplia\Content\Exceptions\ImportDenied $e) {
     $db->rollback();
     $script->shutdown(1, $e->getMessage());
