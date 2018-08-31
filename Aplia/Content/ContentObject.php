@@ -153,30 +153,6 @@ class ContentObject
     }
 
     /**
-     * Ensure the locations array has the correct structure, and figure out a main location.
-     */
-    protected function adjustMainLocation($requireMain)
-    {
-        if (!$this->_locations) {
-            return;
-        }
-        $hasMain = false;
-        foreach ($this->_locations as $idx => $location) {
-            if ($location['is_main']) {
-                if ($hasMain) {
-                    throw new ImproperlyConfigured("Only one location can be marked as main");
-                }
-                $hasMain = true;
-            }
-        }
-        // Only set a main node if it is required, for instance adding a new
-        // location to an existing object does not require adjusting main node
-        if (!$hasMain && $this->_locations && $requireMain) {
-            $this->_locations[0]['is_main'] = true;
-        }
-    }
-
-    /**
      * Add a new location to object, the parent node must not already have a
      * child node for the given object.
      * 
@@ -1102,6 +1078,30 @@ class ContentObject
         }
         $attr->update($this);
         return $attr;
+    }
+
+    /**
+     * Ensure the locations array has the correct structure, and figure out a main location.
+     */
+    protected function adjustMainLocation($requireMain)
+    {
+        if (!$this->_locations) {
+            return;
+        }
+        $hasMain = false;
+        foreach ($this->_locations as $idx => $location) {
+            if ($location['is_main']) {
+                if ($hasMain) {
+                    throw new ImproperlyConfigured("Only one location can be marked as main");
+                }
+                $hasMain = true;
+            }
+        }
+        // Only set a main node if it is required, for instance adding a new
+        // location to an existing object does not require adjusting main node
+        if (!$hasMain && $this->_locations && $requireMain) {
+            $this->_locations[0]['is_main'] = true;
+        }
     }
 
     /**
