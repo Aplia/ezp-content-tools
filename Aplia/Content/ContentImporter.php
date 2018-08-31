@@ -371,6 +371,7 @@ class ContentImporter
             throw new TypeError("Key 'identifier' missing from section record");
         }
         $identifier = $sectionData['identifier'];
+        $originalIdentifier = $identifier;
         if (isset($this->transformSection[$identifier])) {
             $newData = $this->transformSection[$identifier]->transform($sectionData);
             if ($newData) {
@@ -390,6 +391,10 @@ class ContentImporter
                 $identifier = $sectionData['identifier'];
             }
         }
+        $wasText = '';
+        if ($identifier != $originalIdentifier) {
+            $wasText = " (was '${originalIdentifier}')";
+        }
         $name = Arr::get($sectionData, 'name');
         $part = Arr::get($sectionData, "navigation_part_identifier");
         if (isset($this->sectionIndex[$identifier])) {
@@ -397,7 +402,7 @@ class ContentImporter
             if ($name == $existing['name'] && $part == $existing['navigation_part_identifier']) {
                 // Same as existing section, skip
                 if ($this->verbose) {
-                    echo "Section $identifier already exist\n";
+                    echo "Section '${identifier}'${wasText} already exist\n";
                 }
                 return;
             } else if ($this->askOverwrite) {
@@ -414,8 +419,8 @@ class ContentImporter
             }
         } else {
             if ($this->askNew) {
-                if ($this->promptYesOrNo("Section '$identifier' does not exist, do you wish to import it? [yes|no] ") !== "yes") {
-                    throw new ImportDenied("Section '$identifier' not imported, cannot continue");
+                if ($this->promptYesOrNo("Section '${identifier}'${wasText} does not exist, do you wish to import it? [yes|no] ") !== "yes") {
+                    throw new ImportDenied("Section '${identifier}'${wasText}  not imported, cannot continue");
                 }
             }
         }
@@ -438,7 +443,7 @@ class ContentImporter
         );
 
         if ($this->verbose) {
-            echo "Imported section $identifier\n";
+            echo "Imported section $identifier (was $originalIdentifier)\n";
         }
     }
 
