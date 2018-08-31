@@ -735,6 +735,7 @@ class ContentImporter
             'section_identifier' => Arr::get($objectData, 'section_identifier'),
             'is_always_available' => Arr::get($objectData, 'is_always_available'),
             'states' => Arr::get($objectData, 'states'),
+            'published_date' => Arr::get($objectData, 'published_date'),
             'translations' => Arr::get($objectData, 'translations'),
             'attributes' => Arr::get($objectData, 'attributes'),
             'main_node_uuid' => $mainNodeUuid,
@@ -977,6 +978,12 @@ class ContentImporter
                     $states[$groupIdentifier] = $stateIdentifier;
                 }
             }
+            // Use published date if set, parsed from ISO format
+            $publishedDate = null;
+            if (isset($objectData['published_date']) && $objectData['published_date']) {
+                $publishedDate = (new DateTime($objectData['published_date']))->getTimestamp();
+            }
+
             $objectManager = new ContentObject(array(
                 'uuid' => $objectUuid,
                 'identifier' => $objectData['class_identifier'],
@@ -985,6 +992,7 @@ class ContentImporter
                 // Do not create url alias yet
                 'updateNodePath' => false,
                 'states' => $states,
+                'publishedDate' => $publishedDate,
             ));
             $hasObject = false;
             if ($objectManager->exists()) {
