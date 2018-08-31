@@ -1452,7 +1452,7 @@ class ContentObject
             return null;
         }
         $stateObjects = array();
-        foreach ($this->states as $state) {
+        foreach ($this->states as $idx => $state) {
             if ($state instanceof eZContentObjectState) {
                 $stateObjects[] = $state;
                 continue;
@@ -1466,6 +1466,19 @@ class ContentObject
             } else if (preg_match("|^([a-z][a-z0-9_-]*)/([a-z][a-z0-9_-]*)$|i", $state, $matches)) {
                 $groupIdentifier = $matches[1];
                 $stateIdentifier = $matches[2];
+                $group = eZContentObjectStateGroup::fetchByIdentifier($groupIdentifier);
+                if (!$group) {
+                    throw new ObjectDoesNotExist("Content state group with identifier '$groupIdentifier' does not exist");
+                }
+                $state = eZContentObjectState::fetchByIdentifier($stateIdentifier, $group->attribute('id'));
+                if (!$state) {
+                    throw new ObjectDoesNotExist("Content state with '$stateIdentifier' and group '$groupIdentifier' does not exist");
+                }
+                $stateObjects[] = $state;
+            } else if (!is_numeric($idx) && !is_numeric($state)) {
+                // Assume $idx is group and $state is state
+                $groupIdentifier = $idx;
+                $stateIdentifier = $state;
                 $group = eZContentObjectStateGroup::fetchByIdentifier($groupIdentifier);
                 if (!$group) {
                     throw new ObjectDoesNotExist("Content state group with identifier '$groupIdentifier' does not exist");

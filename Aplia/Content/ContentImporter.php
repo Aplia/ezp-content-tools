@@ -963,6 +963,20 @@ class ContentImporter
                 throw new ImportDenied("No translations found on object with uuid=" . $objectUuid);
             }
             $mainLanguage = array_shift($languages);
+            // See if content states are to be set
+            $states = null;
+            if (isset($objectData['states'])) {
+                $states = array();
+                foreach ($objectData['states'] as $groupIdentifier => $stateIdentifier) {
+                    if (!is_string($groupIdentifier)) {
+                        throw new ImportDenied("Content state group of object $objectUuid must be a string, got: " . var_export($groupIdentifier, true));
+                    }
+                    if (!is_string($stateIdentifier)) {
+                        throw new ImportDenied("Content state of object $objectUuid must be a string, got: " . var_export($stateIdentifier, true));
+                    }
+                    $states[$groupIdentifier] = $stateIdentifier;
+                }
+            }
             $objectManager = new ContentObject(array(
                 'uuid' => $objectUuid,
                 'identifier' => $objectData['class_identifier'],
@@ -970,6 +984,7 @@ class ContentImporter
                 'alwaysAvailable' => isset($objectData['is_always_available']) ? $objectData['is_always_available'] : null,
                 // Do not create url alias yet
                 'updateNodePath' => false,
+                'states' => $states,
             ));
             $hasObject = false;
             if ($objectManager->exists()) {
