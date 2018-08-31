@@ -441,6 +441,11 @@ class ContentObjectAttribute
      */
     public function updateXmlTextType($attribute, $value, $object)
     {
+        // Array support, must contain an 'xml' entry
+        if (is_array($value) && isset($value['xml'])) {
+            $value = new RawXmlText($value['xml']);
+        }
+
         // If we have HTML content convert it to XML text first
         if ($value instanceof HtmlText) {
             $value = $this->parseHtmlToXml($value->text, $object);
