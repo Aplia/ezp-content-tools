@@ -153,6 +153,25 @@ class ContentObject
     }
 
     /**
+     * Remove content object and related locations without adding to archive.
+     * 
+     * @return self
+     */
+    public function exists()
+    {
+        if ($this->contentObject) {
+            return true;
+        }
+        if ($this->id) {
+            return eZContentObject::exists($this->id);
+        }
+        if ($this->uuid) {
+            return (bool)eZContentObject::fetchByRemoteID($this->uuid, false);
+        }
+        return false;
+    }
+
+    /**
      * Add a new location to object, the parent node must not already have a
      * child node for the given object.
      * 
