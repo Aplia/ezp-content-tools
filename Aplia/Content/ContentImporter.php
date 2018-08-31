@@ -1116,9 +1116,18 @@ class ContentImporter
             throw new ImportDenied("No translations found on object with uuid=" . $objectUuid);
         }
         $mainLanguage = array_shift($languages);
+        $ownerUuid = null;
+        // Add owner if it exists in database
+        if (isset($objectData['owner']['uuid']) && $objectData['owner']['uuid']) {
+            $owner = eZContentObject::fetchByRemoteID($objectData['owner']['uuid'], false);
+            if ($owner) {
+                $ownerUuid = $objectData['owner']['uuid'];
+            }
+        }
         $objectManager = new ContentObject(array(
             'uuid' => $objectUuid,
             'language' => $mainLanguage,
+            'ownerUuid' => $ownerUuid,
         ));
         // Update all attributes
         if (isset($objectData['attributes']) && $objectData['attributes']) {
