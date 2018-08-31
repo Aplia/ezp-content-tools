@@ -48,6 +48,8 @@ use eZContentObjectStateGroup;
  * $object->update();
  * @endcode
  * 
+ * Ownership can be modified with 'ownerId' or 'ownerUuid' parameter which
+ * references the user object that should own it.
  */
 class ContentObject
 {
@@ -78,6 +80,12 @@ class ContentObject
      * Date is either specified as DateTime object or a timestamp number.
      */
     public $publishedDate;
+    /**
+     * Set a new owner for object, or null to leave.
+     * 
+     * Owner is an ID of user object.
+     */
+    public $ownerId;
     public $isInWorkflow = false;
     public $clearCache = true;
     public $updateNodePath = true;
@@ -161,6 +169,24 @@ class ContentObject
             }
             if (isset($params['publishedDate'])) {
                 $this->publishedDate = $params['publishedDate'];
+            }
+            if (isset($params['ownerId'])) {
+                $this->ownerId = $params['ownerId'];
+                if ($this->ownerId) {
+                    $ownerObject = eZContentObject::fetch($this->ownerId, false);
+                    if (!$ownerObject) {
+                        throw new ObjectDoesNotExist("Owner was specified with ID " . $this->ownerId . " but the content-object does not exist");
+                    }
+                }
+            } else if (isset($params['ownerUuid'])) {
+                $ownerUuid = $params['ownerUuid'];
+                if ($ownerUuid) {
+                    $ownerObject = eZContentObject::fetchByRemoteID($ownerUuid, false);
+                    if (!$ownerObject) {
+                        throw new ObjectDoesNotExist("Owner was specified with UUID $ownerUuid but the content-object does not exist");
+                    }
+                    $this->ownerId = $ownerObject['id'];
+                }
             }
             if (isset($params['clearCache'])) {
                 $this->clearCache = $params['clearCache'];
@@ -629,6 +655,15 @@ class ContentObject
             }
             $this->contentObject->setAttribute('published', $publishedDate);
         }
+        // Update owner if specified
+        if ($this->ownerId !== null) {
+            $this->contentObject->setAttribute('owner_id', $this->ownerId);
+            $contentVersion = $this->contentObject->currentVersion();
+            if ($contentVersion) {
+                $contentVersion->setAttribute('creator_id', $this->ownerId);
+                $contentVersion->sync(array('creator_id'));
+            }
+        }
         $this->contentObject->store();
         $db->commit();
 
@@ -918,6 +953,19 @@ class ContentObject
                     $publishedDate = $this->publishedDate;
                 }
                 $contentObject->setAttribute('published', $publishedDate);
+                $modifiedObject = true;
+            }
+            // Update owner if specified
+            if ($this->ownerId !== null) {
+                if ($contentObject->attribute('owner_id') != $this->ownerId) {
+                    $contentObject->setAttribute('owner_id', $this->ownerId);
+                    $modifiedObject = true;
+                }
+                if ($this->contentVersion && $this->contentVersion->attribute('creator_id') != $this->ownerId) {
+                    $this->contentVersion->setAttribute('creator_id', $this->ownerId);
+                    $this->contentVersion->sync(array('creator_id'));
+                    $modifiedObject = true;
+                }
             }
             $contentObject->store();
         } catch (\Exception $e) {
