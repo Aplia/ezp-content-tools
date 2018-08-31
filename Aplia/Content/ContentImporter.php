@@ -1132,6 +1132,33 @@ class ContentImporter
         }
         $objectManager->update();
         $contentObject = $objectManager->contentObject;
+
+        // Now update the other languages
+        foreach ($languages as $language) {
+            if (!isset($translations[$language]['attributes']) ||
+                !$translations[$language]['attributes']) {
+                continue;
+            }
+            $objectLanguageManager = new ContentObject(array(
+                'uuid' => $objectUuid,
+                'language' => $language,
+            ));
+            foreach ($translations[$language]['attributes'] as $identifier => $attributeData) {
+                $objectLanguageManager->setAttribute($identifier, array(
+                    'content' => $attributeData,
+                ));
+            }
+            // Include locations to get all url aliases updated
+            foreach ($objectData['locations'] as $locationData) {
+                $location = array(
+                    'parent_uuid' => $locationData['parent_node_uuid'],
+                    'uuid' => $locationData['uuid'],
+                );
+                $objectLanguageManager->updateLocation($location);
+            }
+            $objectLanguageManager->update();
+        }
+
         if ($this->verbose) {
             echo "Updated object id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), "\n";
         }
