@@ -1097,10 +1097,20 @@ class ContentImporter
             'languageCode' => $mainLanguage,
         ));
         // Update all attributes
-        foreach ($objectData['translations'][$mainLanguage]['attributes'] as $identifier => $attributeData) {
-            $objectManager->setAttribute($identifier, array(
-                'content' => $attributeData,
-            ));
+        if (isset($objectData['attributes']) && $objectData['attributes']) {
+            foreach ($objectData['attributes'] as $identifier => $attributeData) {
+                $objectManager->setAttribute($identifier, array(
+                    'content' => $attributeData,
+                ));
+            }
+        }
+        if (isset($objectData['translations'][$mainLanguage]['attributes']) &&
+            $objectData['translations'][$mainLanguage]['attributes']) {
+            foreach ($objectData['translations'][$mainLanguage]['attributes'] as $identifier => $attributeData) {
+                $objectManager->setAttribute($identifier, array(
+                    'content' => $attributeData,
+                ));
+            }
         }
         $mainUuid = null;
         if (isset($objectData['main_node']['uuid'])) {
