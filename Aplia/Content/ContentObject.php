@@ -51,6 +51,12 @@ class ContentObject
     public $id;
     public $uuid;
     public $languageCode;
+    /**
+     * Whether object is available in all other languages even without a translation.
+     * 
+     * null means to not update, true set available, false set unavailable.
+     */
+    public $alwaysAvailable;
     public $isInWorkflow = false;
     public $clearCache = true;
     public $updateNodePath = true;
@@ -118,6 +124,9 @@ class ContentObject
                 $this->languageCode = $params['language'];
             } else if (isset($params['languageCode'])) {
                 $this->languageCode = $params['languageCode'];
+            }
+            if (isset($params['alwaysAvailable'])) {
+                $this->alwaysAvailable = $params['alwaysAvailable'];
             }
             if (isset($params['clearCache'])) {
                 $this->clearCache = $params['clearCache'];
@@ -537,7 +546,8 @@ class ContentObject
             $contentClassID,
             $languageCode,
             $this->uuid ? $this->uuid : false,
-            $this->contentObject
+            $this->contentObject,
+            $this->alwaysAvailable
         );
         if (!$this->contentObject) {
             throw new CreationError('Failed to create content object for class: ' . $this->identifier);
@@ -1008,6 +1018,26 @@ class ContentObject
         }
         $db->commit();
 
+        // If always available is to be changed update object and nods
+        if ($this->alwaysAvailable !== null) {
+            $db->begin();
+            if ($alwaysAvailable) {
+                $contentObject->setAlwaysAvailableLanguageID($languageCode ? $languageCode : $contentObject->currentLanguage());
+            } else {
+                $contentObject->setAlwaysAvailableLanguageID(false);
+            }
+            $contentObject->sync(array('language_mask'));
+            if ($this->contentVersion) {
+                if ($alwaysAvailable) {
+                    $this->contentVersion->setAlwaysAvailableLanguageID($languageCode ? $languageCode : $this->contentVersion->initialLanguageCode());
+                } else {
+                    $this->contentVersion->clearAlwaysAvailableLanguageID();
+                }
+                $this->contentVersion->sync(array('language_mask'));
+            }
+            $db->commit();
+        }
+
         if ($this->clearCache && ($modifiedNodes || $modifiedObject)) {
             eZContentCacheManager::clearContentCacheIfNeeded($objectId);
             eZContentObject::clearCache(array($objectId));
@@ -1204,7 +1234,7 @@ class ContentObject
      *
      * @return eZContentObject|null
      */
-    static function createWithNodeAssignment(&$locations, $contentClassID, $languageCode, $remoteID = false, $contentObject=null)
+    static function createWithNodeAssignment(&$locations, $contentClassID, $languageCode, $remoteID = false, $contentObject=null, $alwaysAvailable=null)
     {
         if ($contentClassID instanceof eZContentClass) {
             $class = $contentClassID;
@@ -1238,6 +1268,16 @@ class ContentObject
             if (!$contentObject) {
                 throw new CreationError("Could not create Content Object");
             }
+        }
+
+        // If always available is to be changed update object and nods
+        if ($alwaysAvailable !== null) {
+            if ($alwaysAvailable) {
+                $contentObject->setAttribute('language_mask', $contentObject->attribute('language_mask') | 1);
+            } else {
+                $contentObject->setAttribute('language_mask', $contentObject->attribute('language_mask') & ~1);
+            }
+            $contentObject->sync(array('language_mask'));
         }
 
         // Create node-assignments for objects, mainly used for creating nodes upon publishing the first version

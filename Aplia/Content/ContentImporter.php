@@ -966,7 +966,8 @@ class ContentImporter
             $objectManager = new ContentObject(array(
                 'uuid' => $objectUuid,
                 'identifier' => $objectData['class_identifier'],
-                'languageCode' => $mainLanguage,
+                'language' => $mainLanguage,
+                'alwaysAvailable' => isset($objectData['is_always_available']) ? $objectData['is_always_available'] : null,
                 // Do not create url alias yet
                 'updateNodePath' => false,
             ));
@@ -1094,7 +1095,7 @@ class ContentImporter
         $mainLanguage = array_shift($languages);
         $objectManager = new ContentObject(array(
             'uuid' => $objectUuid,
-            'languageCode' => $mainLanguage,
+            'language' => $mainLanguage,
         ));
         // Update all attributes
         if (isset($objectData['attributes']) && $objectData['attributes']) {
@@ -1104,9 +1105,9 @@ class ContentImporter
                 ));
             }
         }
-        if (isset($objectData['translations'][$mainLanguage]['attributes']) &&
-            $objectData['translations'][$mainLanguage]['attributes']) {
-            foreach ($objectData['translations'][$mainLanguage]['attributes'] as $identifier => $attributeData) {
+        if (isset($translations[$mainLanguage]['attributes']) &&
+            $translations[$mainLanguage]['attributes']) {
+            foreach ($translations[$mainLanguage]['attributes'] as $identifier => $attributeData) {
                 $objectManager->setAttribute($identifier, array(
                     'content' => $attributeData,
                 ));
