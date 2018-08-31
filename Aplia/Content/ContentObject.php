@@ -733,7 +733,7 @@ class ContentObject
 
         if ($this->stateObjects !== null) {
             foreach ($this->stateObjects as $state) {
-                $contentObject->assignState($state);
+                $this->contentObject->assignState($state);
             }
         }
         $db->commit();
