@@ -988,7 +988,26 @@ class ContentObject
             $node->setAttribute('priority', $location['priority']);
             $changes[] = 'priority';
         }
-        // TODO: Handle visibility, check how it is done in eZ publish
+        if (isset($location['visibility'])) {
+            if ($location['visibility'] === 'visibile') {
+                $isHidden = false;
+                $isInvisible = false;
+            } else if ($location['visibility'] === 'hidden') {
+                $isHidden = true;
+                $isInvisible = true;
+            } else if ($location['visibility'] === 'invisible') {
+                $isHidden = false;
+                $isInvisible = true;
+            } else {
+                throw ValueError("Visibility for node " . $node->attribute('remote_id') . " has unknown type '" . $location['visibility'] . "'");
+            }
+            if ($isHidden != (bool)$node->attribute('is_hidden') || $isInvisible != (bool)$node->attribute('is_invisible')) {
+                $node->setAttribute('is_hidden', $isHidden);
+                $node->setAttribute('is_invisibile', $isInvisible);
+                $changes[] = 'is_hidden';
+                $changes[] = 'is_invisible';
+            }
+        }
         return $changes;
     }
 
