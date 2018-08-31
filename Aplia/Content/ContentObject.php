@@ -18,6 +18,8 @@ use eZContentObjectTreeNode;
 use eZNodeAssignment;
 use eZContentCache;
 use eZContentCacheManager;
+use eZContentObjectState;
+use eZContentObjectStateGroup;
 
 /**
  * Manager for eZContentObject instances, makes it easy to create new objects
@@ -63,6 +65,13 @@ class ContentObject
      * @type string
      */
     public $sectionIdentifier;
+    /**
+     * Array of content states to apply to objects or null leave as-is
+     * 
+     * Each state is specified as either ID or content state, string with '<group>/<state>' identifiers
+     * or an eZContentObjectState object.
+     */
+    public $states;
     public $isInWorkflow = false;
     public $clearCache = true;
     public $updateNodePath = true;
@@ -79,12 +88,14 @@ class ContentObject
      $contentClass;
      $identifier;
      $locations;
+     $stateObjects;
     */
 
     protected $_contentClass = 'unset';
     protected $_identifier;
     protected $_locations;
     protected $_nodes;
+    protected $_stateObjects = 'unset';
 
     /**
      * Wraps the procedure for creating or updating content objects into a
@@ -138,6 +149,9 @@ class ContentObject
                 $this->sectionIdentifier = $params['sectionIdentifier'];
             } else if (isset($params['section'])) {
                 $this->sectionIdentifier = $params['section'];
+            }
+            if (isset($params['states'])) {
+                $this->states = $params['states'];
             }
             if (isset($params['clearCache'])) {
                 $this->clearCache = $params['clearCache'];
@@ -561,6 +575,8 @@ class ContentObject
                 $sectionId = $section->attribute('id');
             }
         }
+        $db = \eZDB::instance();
+        $db->begin();
         $this->contentObject = self::createWithNodeAssignment(
             $this->_locations,
             $contentClassID,
@@ -597,10 +613,10 @@ class ContentObject
         $name = $this->contentClass->contentObjectName($this->contentObject, $this->contentObject->attribute('current_version'), $languageCode);
         $this->contentObject->setName($name, $this->contentObject->attribute('current_version'), $languageCode);
         $this->contentObject->store();
+        $db->commit();
 
         if ($publish) {
             // Getting the current transaction counter to check if all transactions are committed during content/publish operation (see below)
-            $db = \eZDB::instance();
             $transactionCounter = $db->transactionCounter();
             $operationResult = \eZOperationHandler::execute(
                 'content', 'publish', array(
@@ -634,6 +650,7 @@ class ContentObject
             }
         }
 
+        $db->begin();
         foreach ($this->locations as $location) {
             if ($location['status'] !== 'new') {
                 continue;
@@ -661,6 +678,14 @@ class ContentObject
                 $node->sync(array('remote_id'));
             }
         }
+
+        if ($this->stateObjects !== null) {
+            foreach ($this->stateObjects as $state) {
+                $contentObject->assignState($state);
+            }
+        }
+        $db->commit();
+
         $this->_locations = null;
 
         $this->_nodes = null;
@@ -1049,9 +1074,9 @@ class ContentObject
         }
         $db->commit();
 
+        $db->begin();
         // If always available is to be changed update object and nods
         if ($this->alwaysAvailable !== null) {
-            $db->begin();
             if ($alwaysAvailable) {
                 $contentObject->setAlwaysAvailableLanguageID($languageCode ? $languageCode : $contentObject->currentLanguage());
             } else {
@@ -1066,8 +1091,14 @@ class ContentObject
                 }
                 $this->contentVersion->sync(array('language_mask'));
             }
-            $db->commit();
         }
+
+        if ($this->stateObjects !== null) {
+            foreach ($this->stateObjects as $state) {
+                $contentObject->assignState($state);
+            }
+        }
+        $db->commit();
 
         if ($this->clearCache && ($modifiedNodes || $modifiedObject)) {
             eZContentCacheManager::clearContentCacheIfNeeded($objectId);
@@ -1410,6 +1441,47 @@ class ContentObject
         return $this->dataMap;
     }
 
+    /**
+     * Creates a list of state objects from the input array of wanted states.
+     * 
+     * @return array of eZContentObjectState
+     */
+    protected function loadStateObjects()
+    {
+        if ($this->states === null) {
+            return null;
+        }
+        $stateObjects = array();
+        foreach ($this->states as $state) {
+            if ($state instanceof eZContentObjectState) {
+                $stateObjects[] = $state;
+                continue;
+            }
+            if (is_numeric($state)) {
+                $state = eZContentObjectState::fetchById($state);
+                if (!$state) {
+                    throw new ObjectDoesNotExist("Content state with ID $state does not exist");
+                }
+                $stateObjects[] = $state;
+            } else if (preg_match("|^([a-z][a-z0-9_-]*)/([a-z][a-z0-9_-]*)$|i", $state, $matches)) {
+                $groupIdentifier = $matches[1];
+                $stateIdentifier = $matches[2];
+                $group = eZContentObjectStateGroup::fetchByIdentifier($groupIdentifier);
+                if (!$group) {
+                    throw new ObjectDoesNotExist("Content state group with identifier '$groupIdentifier' does not exist");
+                }
+                $state = eZContentObjectState::fetchByIdentifier($stateIdentifier, $group->attribute('id'));
+                if (!$state) {
+                    throw new ObjectDoesNotExist("Content state with '$stateIdentifier' and group '$groupIdentifier' does not exist");
+                }
+                $stateObjects[] = $state;
+            } else {
+                throw new ValueError("Unsupport value for content state: " . var_export($state, true));
+            }
+        }
+        return $stateObjects;
+    }
+
     public function getAttribute($identifier)
     {
         if ($this->attributes === null) {
@@ -1432,7 +1504,8 @@ class ContentObject
 
     public function __isset($name)
     {
-        return $name === 'contentClass' || $name === 'identifier' || $name == 'locations' || $name == 'nodes';
+        return $name === 'contentClass' || $name === 'identifier' || $name == 'locations' ||
+               $name == 'nodes' || $name === 'stateObjects';
     }
 
     public function __get($name)
@@ -1458,6 +1531,11 @@ class ContentObject
                 $this->loadNodes();
             }
             return $this->_nodes;
+        } else if ($name === 'stateObjects') {
+            if ($this->_stateObjects === 'unset') {
+                $this->_stateObjects = $this->loadStateObjects();
+            }
+            return $this->_stateObjects;
         } else {
             throw new AttributeError("Unknown attribute $name on ContentObject instance");
         }
