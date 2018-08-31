@@ -1125,6 +1125,9 @@ class ContentImporter
                 'is_main' => $locationData['uuid'] == $mainUuid,
                 'visibility' => $locationData['visibility'],
             );
+            if ($nodeData['priority']) {
+                $location['priority'] = $nodeData['priority'];
+            }
             $objectManager->updateLocation($location);
         }
         $objectManager->update();
