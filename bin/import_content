@@ -176,6 +176,18 @@ function parseNdjson(ContentImporter $importer, $filePath) {
     }
 }
 
+function parseJson(ContentImporter $importer, $filePath) {
+    $data = file_get_contents($filePath);
+    if (!$data) {
+        return;
+    }
+    $jsonData = json_decode($data, /*assoc*/true);
+    if (!is_array($jsonData)) {
+        return;
+    }
+    $importer->importRecord($record);
+}
+
 try {
     $importer = new ContentImporter($options);
     if ($configFile) {
@@ -191,13 +203,14 @@ try {
         if (substr($filePath, -7) === '.ndjson') {
             parseNdjson($importer, $filePath);
         } else if (substr($filePath, -5) === '.json') {
+            parseJson($importer, $filePath);
         } else {
             $script->shutdown(1, "Unsupported file format $filePath, must ether be .json or .ndjson");
         }
     }
     $cli->output("Finalizing imported data");
     $importer->finalize();
-    $cli->output("Imported $count records");
+    $cli->output("Imported " . $importer->recordCount . " records");
 } catch (\Aplia\Content\Exceptions\ImportDenied $e) {
     $db->rollback();
     $script->shutdown(1, $e->getMessage());

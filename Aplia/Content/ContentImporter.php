@@ -15,6 +15,7 @@ class ContentImporter
     public $lastRecordType;
     public $hasIndex = false;
     public $hasBundle = false;
+    public $recordCount = 0;
 
     public $askOverwrite = true;
     public $askNew = true;
@@ -871,38 +872,48 @@ class ContentImporter
             if (isset($data['content_languages'])) {
                 foreach ($data as $record) {
                     $this->importContentLanguage($record);
+                    $this->recordCount += 1;
                 }
             }
             if (isset($data['sections'])) {
                 foreach ($data as $record) {
                     $this->importSection($record);
+                    $this->recordCount += 1;
                 }
             }
             if (isset($data['content_states'])) {
                 foreach ($data as $record) {
                     $this->importState($record);
+                    $this->recordCount += 1;
                 }
             }
             if (isset($data['content_classes'])) {
                 foreach ($data as $record) {
                     $this->importContentClass($record);
+                    $this->recordCount += 1;
                 }
             }
             if (isset($data['content_objects'])) {
                 foreach ($data as $record) {
                     $this->importContentObject($record);
+                    $this->recordCount += 1;
                 }
             }
         } else if ($type == 'ez_section') {
             $this->importSection($data);
+            $this->recordCount += 1;
         } else if ($type == 'ez_contentlanguage') {
             $this->importContentLanguage($data);
+            $this->recordCount += 1;
         } else if ($type == 'ez_contentstate') {
             $this->importState($data);
+            $this->recordCount += 1;
         } else if ($type == 'ez_contentclass') {
             $this->importContentClass($data);
+            $this->recordCount += 1;
         } else if ($type == 'ez_contentobject') {
             $this->importContentObject($data);
+            $this->recordCount += 1;
         } else {
             throw new TypeError("Unsupported record type $type");
         }
