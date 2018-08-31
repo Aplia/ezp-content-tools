@@ -553,6 +553,59 @@ class ContentObject
     }
 
     /**
+     * Figures out the tree identifier for the given node.
+     * For instance a nodeId of 2 would return 'content'.
+     * 
+     * If the node is not a top-level node or is unknown it returns null
+     * 
+     * @return string The identifier of the tree structure for the top-level node
+     */
+    public static function mapNodeToTreeIdentifier($nodeId)
+    {
+        $contentIni = eZINI::instance('content.ini');
+        $identifier = null;
+        if ($contentIni->variable('NodeSettings', 'RootNode') == $nodeId) {
+            $identifier = 'content';
+        } else if ($contentIni->variable('NodeSettings', 'UserRootNode') == $nodeId) {
+            $identifier = 'users';
+        } else if ($contentIni->variable('NodeSettings', 'MediaNode') == $nodeId) {
+            $identifier = 'content';
+        } else if ($contentIni->variable('NodeSettings', 'SetupRootNode') == $nodeId) {
+            $identifier = 'setup';
+        } else if ($contentIni->variable('NodeSettings', 'DesignRootNode') == $nodeId) {
+            $identifier = 'content';
+        }
+        return $identifier;
+    }
+
+    /**
+     * Figures out the node ID of the tree identifier.
+     * For instance 'content' would return 2.
+     * 
+     * @return int The node ID for the tree or null if no match
+     */
+    public static function mapTreeIdentifierToNode($identifier)
+    {
+        $contentIni = eZINI::instance('content.ini');
+        if ($treeId === 'content') {
+            return $contentIni->variable('NodeSettings', 'RootNode');
+        } else if ($treeId === 'media') {
+            return $contentIni->variable('NodeSettings', 'MediaRootNode');
+        } else if ($treeId === 'user' || $treeId === 'users') {
+            return $contentIni->variable('NodeSettings', 'UserRootNode');
+        } else if ($treeId === 'top') {
+            return 1;
+        } else {
+            if ($contentIni->hasVariable('NodeSettings', 'RootNodes')) {
+                $rootNodes = $contentIni->variable('NodeSettings', 'RootNodes');
+                if (isset($rootNodes[$treeId])) {
+                    return $rootNodes[$treeId];
+                }
+            }
+        }
+    }
+
+    /**
      * Creates the content object using current fields, attributes and locations.
      * If the content object already exists it throws an exception.
      * 

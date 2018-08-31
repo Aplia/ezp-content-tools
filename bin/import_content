@@ -4,6 +4,7 @@ use Aplia\Support\Arr;
 use \eZCLI;
 use \eZScript;
 use Aplia\Content\ContentImporter;
+use Aplia\Content\ContentObject;
 
 @include_once 'config.php';
 require_once 'autoload.php';
@@ -68,25 +69,14 @@ if (is_numeric($parentNodeId)) {
     }
 } else if (preg_match("/^tree:(.+)$/", $parentNodeId, $matches)) {
     $treeId = $matches[1];
-    $contentIni = \eZINI::instance('content.ini');
-    if ($treeId === 'content') {
-        $parentNode = \eZContentObjectTreeNode::fetch($contentIni->variable('NodeSettings', 'RootNode'));
-    } else if ($treeId === 'media') {
-        $parentNode = \eZContentObjectTreeNode::fetch($contentIni->variable('NodeSettings', 'MediaRootNode'));
-    } else if ($treeId === 'user' || $treeId === 'users') {
-        $parentNode = \eZContentObjectTreeNode::fetch($contentIni->variable('NodeSettings', 'UserRootNode'));
-    } else if ($treeId === 'top') {
-        $parentNode = \eZContentObjectTreeNode::fetch(1);
-        $script->output("Warning: Importing nodes to the top node 1 is not recommended");
+    $parentNodeId = ContentObject::mapTreeIdentifierToNode($treeId);
+    if ($parentNodeId === null) {
+        $script->shutdown(1, "Unknown tree structure for ID '$treeId', must be defined in content.ini");
     } else {
-        $rootNodes = array();
-        if ($contentIni->hasVariable('NodeSettings', 'RootNodes')) {
-            $rootNodes = $contentIni->variable('NodeSettings', 'RootNodes');
+        if ($parentNodeId == 1) {
+            $script->output("Warning: Importing nodes to the top node 1 is not recommended");
         }
-        if (!isset($rootNodes[$treeId])) {
-            $script->shutdown(1, "Unknown tree structure for ID '$treeId', must be defined in content.ini");
-        }
-        $parentNode = \eZContentObjectTreeNode::fetch($rootNodes[$treeId]);
+        $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
     }
     if (!$parentNode) {
         $script->shutdown(1, "Root node for tree $treeId was not found");

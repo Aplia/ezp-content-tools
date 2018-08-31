@@ -57,10 +57,12 @@ class ContentExporter
             // Implicitly hidden by parent nodes
             $visibility = 'invisible';
         }
+        $nodeId = (int)$node->attribute('node_id');
+        $parentNodeId = (int)$node->attribute('parent_node_id');
         $data = array(
             '__type__' => 'ez_contentnode',
-            'node_id' => (int)$node->attribute('node_id'),
-            'parent_node_id' => (int)$node->attribute('parent_node_id'),
+            'node_id' => $nodeId,
+            'parent_node_id' => $parentNodeId,
             'uuid' => $node->remoteId(),
             'parent_node_uuid' => $parent->remoteId(),
             'original_depth' => (int)$node->attribute('depth'),
@@ -70,6 +72,14 @@ class ContentExporter
             'priority' => (int)$node->attribute('priority'),
             'visibility' => $visibility,
         );
+        // Mark top-level nodes as start of a tree-structure
+        if ($parentNodeId == 1) {
+            $data['node_type'] = 'tree-root';
+        }
+        $treeIdentifier = ContentObject::mapNodeToTreeIdentifier($nodeId);
+        if ($treeIdentifier) {
+            $data['tree_identifier'] = $treeIdentifier;
+        }
         return $data;
     }
 
@@ -96,9 +106,11 @@ class ContentExporter
             'attributes' => array(),
             'translations' => array(),
         );
+        $mainNodeId = null;
         if ($mainNode) {
+            $mainNodeId = (int)$mainNode->attribute('node_id');
             $data['main_node'] = array(
-                'node_id' => (int)$mainNode->attribute('node_id'),
+                'node_id' => $mainNodeId,
                 'uuid' => $mainNode->remoteId(),
             );
         }
