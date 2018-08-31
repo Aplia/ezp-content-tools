@@ -311,6 +311,48 @@ class ContentObject
     }
 
     /**
+     * Update an existing location.
+     * The location is determined by parent_id, parent_uuid or parent_node.
+     * 
+     * If 'node' is passed it is used as location.
+     * 
+     * The simplest way is to just specify the parent node ID and fields
+     * @code
+     * updateLocation(42, array(
+     *   'sort_by' => 'name',
+     * ))
+     * @endcode
+     * 
+     * If you need set multiple entries or use uuid for parent just pass one array
+     * @code
+     * updateLocation(array(
+     *   'parent_uuid' => 'abcdef',
+     *   'sort_by' => 'name',
+     * ))
+     * @endcode
+     * 
+     * @throw ValueError If the location does not have a node present
+     * @return self
+     */
+    public function updateLocation($location, array $fields)
+    {
+        $location = $this->processLocationValue($location);
+        if ($fields) {
+            $location = array_merge($fields, $location);
+        }
+        $location = $this->processLocationEntry($location, /*checkExisting*/true);
+        if (!isset($location['node'])) {
+            throw new ValueError("Cannot update location as the node for the location does not exist");
+        }
+        if ($this->_locations === null) {
+            $this->_locations = array();
+        }
+        $this->_locations[] = $location;
+
+        return $this;
+    }
+
+    /**
      * Process the location parameter by check for the type, if it is already
      * an array it is simply returned. Otherwise it tries to detect the type
      * of location that is passed.
