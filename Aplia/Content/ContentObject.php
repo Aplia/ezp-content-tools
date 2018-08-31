@@ -57,6 +57,12 @@ class ContentObject
      * null means to not update, true set available, false set unavailable.
      */
     public $alwaysAvailable;
+    /**
+     * Which section to set on object, or null to use default
+     * 
+     * @type string
+     */
+    public $sectionIdentifier;
     public $isInWorkflow = false;
     public $clearCache = true;
     public $updateNodePath = true;
@@ -127,6 +133,11 @@ class ContentObject
             }
             if (isset($params['alwaysAvailable'])) {
                 $this->alwaysAvailable = $params['alwaysAvailable'];
+            }
+            if (isset($params['sectionIdentifier'])) {
+                $this->sectionIdentifier = $params['sectionIdentifier'];
+            } else if (isset($params['section'])) {
+                $this->sectionIdentifier = $params['section'];
             }
             if (isset($params['clearCache'])) {
                 $this->clearCache = $params['clearCache'];
@@ -541,13 +552,23 @@ class ContentObject
             throw new ImproperlyConfigured("Language code '$languageCode' does not exist in the system");
         }
 
+        $sectionId = null;
+        if ($this->sectionIdentifier) {
+            if (is_numeric($this->sectionIdentifier)) {
+                $sectionId = $this->sectionIdentifier;
+            } else {
+                $section = eZSection::fetchByIdentifier($this->sectionIdentifier);
+                $sectionId = $section->attribute('id');
+            }
+        }
         $this->contentObject = self::createWithNodeAssignment(
             $this->_locations,
             $contentClassID,
             $languageCode,
             $this->uuid ? $this->uuid : false,
             $this->contentObject,
-            $this->alwaysAvailable
+            $this->alwaysAvailable,
+            $sectionId
         );
         if (!$this->contentObject) {
             throw new CreationError('Failed to create content object for class: ' . $this->identifier);
@@ -823,6 +844,16 @@ class ContentObject
                 $this->dataMap = $this->contentVersion->dataMap();
                 $contentVersionNo = $this->contentVersion->attribute('version');
                 $publish = true;
+            }
+
+            if ($this->sectionIdentifier) {
+                if (is_numeric($this->sectionIdentifier)) {
+                    $sectionId = $this->sectionIdentifier;
+                } else {
+                    $section = eZSection::fetchByIdentifier($this->sectionIdentifier);
+                    $sectionId = $section->attribute('id');
+                }
+                $contentObject->setAttribute('section_id', $sectionId);
             }
 
             if ($this->attributesChange) {
@@ -1234,7 +1265,7 @@ class ContentObject
      *
      * @return eZContentObject|null
      */
-    static function createWithNodeAssignment(&$locations, $contentClassID, $languageCode, $remoteID = false, $contentObject=null, $alwaysAvailable=null)
+    static function createWithNodeAssignment(&$locations, $contentClassID, $languageCode, $remoteID = false, $contentObject=null, $alwaysAvailable=null, $sectionId=null)
     {
         if ($contentClassID instanceof eZContentClass) {
             $class = $contentClassID;
@@ -1253,18 +1284,20 @@ class ContentObject
         $mainParentNode = self::prepareLocations($locations);
 
         // Set section of the newly created object to the section's value of it's parent object
-        $sectionID = 0;
-        if (!$contentObject) {
+        if (!$contentObject && $sectionId === null) {
             if ($mainParentNode) {
                 $mainParentObject = $mainParentNode->attribute( 'object' );
-                $sectionID = $mainParentObject->attribute( 'section_id' );
+                $sectionId = $mainParentObject->attribute( 'section_id' );
             }
+        }
+        if ($sectionId === null) {
+            $sectionId = 0;
         }
 
         $db = \eZDB::instance();
         $db->begin();
         if (!$contentObject) {
-            $contentObject = $class->instantiateIn( $languageCode, false, $sectionID, false, \eZContentObjectVersion::STATUS_INTERNAL_DRAFT );
+            $contentObject = $class->instantiateIn( $languageCode, false, $sectionId, false, \eZContentObjectVersion::STATUS_INTERNAL_DRAFT );
             if (!$contentObject) {
                 throw new CreationError("Could not create Content Object");
             }
