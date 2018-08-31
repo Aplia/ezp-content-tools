@@ -17,6 +17,7 @@ use eZContentClass;
 use eZContentObject;
 use eZContentObjectTreeNode;
 use eZNodeAssignment;
+use eZSection;
 use eZContentCache;
 use eZContentCacheManager;
 use eZContentObjectState;
