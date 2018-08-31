@@ -340,6 +340,31 @@ class ContentImporter
         return $this->classIndex;
     }
 
+    public function remapSectionIdentifier($identifier)
+    {
+        $sectionData = array(
+            'identifier' => $identifier,
+        );
+        if (isset($this->transformSection[$identifier])) {
+            $newData = $this->transformSection[$identifier]->transform($sectionData);
+            if ($newData) {
+                $identifier = $newData['identifier'];
+            }
+        } else if (isset($this->transformSection['*'])) {
+            $newData = $this->transformSection['*']->transform($sectionData);
+            if ($newData) {
+                $sectionData = $newData;
+                $identifier = $newData['identifier'];
+            }
+        } else if (isset($this->mapSection[$identifier])) {
+            $newData = $this->mapSection[$identifier];
+            if ($newData) {
+                $identifier = $newData['identifier'];
+            }
+        }
+        return $identifier;
+    }
+
     public function importSection($sectionData)
     {
         if (!isset($sectionData['identifier'])) {
@@ -996,11 +1021,17 @@ class ContentImporter
                 $publishedDate = (new DateTime($objectData['published_date']))->getTimestamp();
             }
 
+            $sectionIdentifier = null;
+            if (isset($objectData['section_identifier'])) {
+                $sectionIdentifier = $objectData['section_identifier'];
+                $sectionIdentifier = $this->remapSectionIdentifier($sectionIdentifier);
+            }
             $objectManager = new ContentObject(array(
                 'uuid' => $objectUuid,
                 'identifier' => $objectData['class_identifier'],
                 'language' => $mainLanguage,
                 'alwaysAvailable' => isset($objectData['is_always_available']) ? $objectData['is_always_available'] : null,
+                'sectionIdentifier' => $sectionIdentifier,
                 // Do not create url alias yet
                 'updateNodePath' => false,
                 'states' => $states,
