@@ -5,6 +5,8 @@ use Aplia\Content\Exceptions\ImportDenied;
 use Aplia\Content\Exceptions\UnsetValueError;
 use Aplia\Content\Exceptions\TypeError;
 use Aplia\Content\Exceptions\ValueError;
+use eZContentObject;
+use eZContentObjectTreeNode;
 
 class ContentImporter
 {
@@ -41,6 +43,18 @@ class ContentImporter
     // property $languageIndex = array();
     // property $stateIndex = array();
     // property $classIndex = array();
+    public $objectIndex = array();
+    public $nodeIndex = array();
+    // Keeps track of new nodes which are missing the parent nodes
+    // If it contains entries after finalize() these entries needs to be remapped to the startNode
+    public $nodeMissingIndex = array();
+    public $nodeIdIndex = array();
+    // Keeps track of nodes which are the starting point of tree structures, see also nodeMissingIndex
+    public $nodeStartIndex = array();
+
+    // Queues, processed after import has collected data
+    // List of uuids of all objects that are to be created, references $objectIndex
+    public $newObjectQueue = array();
 
     public function __construct(array $options = null) {
         if (isset($options['start_node'])) {
@@ -49,6 +63,7 @@ class ContentImporter
         if (!$this->startNode) {
             throw new UnsetValueError("ContentImporter requires start_node set");
         }
+        $this->addExistingNode($this->startNode, /*nodeUuid*/null, /*children*/null, true);
     }
 
     public function __isset($name)
@@ -252,7 +267,7 @@ class ContentImporter
         foreach (\eZSection::fetchList(false) as $section) {
             $this->sectionIndex[$section['identifier']] = array(
                 'id' => $section['id'],
-                'new' => false,
+                'status' => 'reference',
                 'identifier' => $section['identifier'],
                 'name' => $section['name'],
                 'navigation_part_identifier' => $section['navigation_part_identifier'],
@@ -269,7 +284,7 @@ class ContentImporter
         foreach (\eZContentLanguage::fetchList() as $language) {
             $this->languageIndex[$language->attribute('locale')] = array(
                 'locale' => $language->attribute('locale'),
-                'new' => false,
+                'status' => 'reference',
                 'name' => $language->attribute('name'),
             );
         }
@@ -289,7 +304,7 @@ class ContentImporter
             }
             $this->stateIndex[$stateGroup->attribute('identifier')] = array(
                 'id' => $stateGroup->attribute('id'),
-                'new' => false,
+                'status' => 'reference',
                 'identifier' => $stateGroup->attribute('identifier'),
                 'states' => $stateIdentifiers,
             );
@@ -315,7 +330,7 @@ class ContentImporter
             }
             $this->classIndex[$class->attribute('identifier')] = array(
                 'id' => $class->attribute('id'),
-                'new' => false,
+                'status' => 'reference',
                 'identifier' => $class->attribute('identifier'),
                 'attributes' => $attributes,
             );
@@ -392,7 +407,7 @@ class ContentImporter
         // Store in index with ID
         $this->sectionIndex[$identifier] = array(
             'id' => $section->attribute('id'),
-            'new' => true,
+            'status' => 'new',
         );
 
         if ($this->verbose) {
@@ -461,7 +476,7 @@ class ContentImporter
             'id' => $language->attribute('id'),
             'locale' => $identifier,
             'name' => $language->attribute('name'),
-            'new' => true,
+            'status' => 'new',
         );
 
         if ($this->verbose) {
@@ -596,7 +611,7 @@ class ContentImporter
         // Store in index with ID
         $this->stateIndex[$identifier] = array(
             'id' => $stateGroup->attribute('id'),
-            'new' => true,
+            'status' => 'new',
         );
         if ($this->verbose) {
             echo "Imported content object state group $identifier\n";
@@ -686,6 +701,130 @@ class ContentImporter
         }
     }
 
+    public function contentObjectExists($uuid)
+    {
+        $db = eZDB::instance();
+        $remoteID = $db->escapeString( $remoteID );
+        $resultArray = $db->arrayQuery('SELECT id FROM ezcontentobject WHERE remote_id=\'' . $remoteID . '\'');
+        return count($resultArray) == 1;
+    }
+
+    public function importContentObject($objectData)
+    {
+        if (!isset($objectData['uuid'])) {
+            throw new TypeError("Key 'uuid' missing from content-object record");
+        }
+        if (!isset($objectData['class_identifier'])) {
+            throw new TypeError("Key 'class_identifier' missing from content-object record");
+        }
+        $uuid = $objectData['uuid'];
+        // TODO: Handle remapping/transforms
+        if (isset($this->objectIndex[$uuid])) {
+            if ($this->verbose) {
+                echo "Content-object with uuid $uuid already exists, skipping\n";
+                return;
+            }
+        }
+        $mainNodeUuid = Arr::get(Arr::get($objectData, 'main_node'), 'uuid');
+        $this->objectIndex[$uuid] = array(
+            'uuid' => $uuid,
+            'status' => 'new',
+            'class_identifier' => Arr::get($objectData, 'class_identifier'),
+            'original_id' => Arr::get($objectData, 'object_id'),
+            'owner' => Arr::get($objectData, 'owner'),
+            'section_identifier' => Arr::get($objectData, 'section_identifier'),
+            'is_always_available' => Arr::get($objectData, 'is_always_available'),
+            'states' => Arr::get($objectData, 'states'),
+            'translations' => Arr::get($objectData, 'translations'),
+            'attributes' => Arr::get($objectData, 'attributes'),
+            'main_node_uuid' => $mainNodeUuid,
+            // Locations is an array of uuid that point to the nodeIndex
+            'locations' => array(),
+        );
+        // Check if object already exists
+        $contentObject = eZContentObject::fetchByRemoteID($uuid);
+        if ($contentObject) {
+            // Object already exists, should only be updated
+            $this->objectIndex[$uuid]['status'] = 'present';
+        }
+        if ($this->objectIndex[$uuid]['status'] === 'new') {
+            $this->newObjectQueue[$uuid] = $uuid;
+        }
+
+        $locations = Arr::get($objectData, 'locations');
+        if ($locations) {
+            $hasMain = false;
+            $locations = array_values($locations);
+            foreach ($locations as $idx => $location) {
+                if (!isset($location['uuid'])) {
+                    throw new TypeError("Key 'uuid' missing from content-object location $idx on object $uuid");
+                }
+                if (!isset($location['parent_node_uuid'])) {
+                    throw new TypeError("Key 'parent_node_uuid' missing from content-object location $idx on object $uuid");
+                }
+                $locations[$idx]['is_main'] = $location['uuid'] == $mainNodeUuid;
+                if ($locations[$idx]['is_main']) {
+                    $hasMain = true;
+                }
+            }
+            if (!$hasMain) {
+                $locations[0]['is_main'] = true;
+                $mainNodeUuid = $location[0]['uuid'];
+                $this->objectIndex[$uuid]['main_node_uuid'] = $mainNodeUuid;
+            }
+            foreach ($locations as $idx => $location) {
+                $nodeUuid = $location['uuid'];
+                $parentUuid = $location['parent_node_uuid'];
+                if (isset($this->nodeIndex[$nodeUuid])) {
+                    if ($this->verbose) {
+                        echo "Content-node with uuid $nodeUuuid already exists, skipping\n";
+                    }
+                    continue;
+                }
+                $originalNodeId = Arr::get($location, 'node_id');
+                // Store the node/location, referenced by uuid
+                $this->nodeIndex[$nodeUuid] = array(
+                    'uuid' => $nodeUuid,
+                    'status' => 'new',
+                    'parent_uuid' => $parentUuid,
+                    'object_uuid' => $uuid,
+                    'original_node_id' => $originalNodeId,
+                    'sort_by' => Arr::get($location, 'sort_by'),
+                    'priority' => Arr::get($location, 'priority'),
+                    'visibility' => Arr::get($location, 'visibility'),
+                    'is_main' => $location['is_main'],
+                    'url_alias' => Arr::get($location, 'url_alias'),
+                    'children' => array(),
+                );
+                $node = eZContentObjectTreeNode::fetchByRemoteID($nodeUuid);
+                if ($node) {
+                    // If node already exists then only update it
+                    $this->nodeIndex[$nodeUuid]['status'] = 'present';
+                }
+                // Store mapping from original node_id to uuid, can be used to fix imported content references
+                if ($originalNodeId) {
+                    $this->nodeIdIndex[$originalNodeId] = $nodeUuid;
+                }
+                // Connect to existing parents, or place in index for missing parents
+                if (isset($this->nodeIndex[$parentUuid])) {
+                    $this->nodeIndex[$parentUuid]['children'][] = $nodeUuid;
+                } else {
+                    if (!isset($this->nodeMissingIndex[$parentUuid])) {
+                        $this->nodeMissingIndex[$parentUuid] = array();
+                    }
+                    $this->nodeMissingIndex[$parentUuid][] = $nodeUuid;
+                }
+                // Check if there are nodes that references this node as parent, if so fix relationship
+                // by adding all references as children
+                if (isset($this->nodeMissingIndex[$nodeUuid])) {
+                    $this->nodeIndex[$nodeUuid]['children'] = array_merge($this->nodeIndex[$nodeUuid]['children'], $this->nodeMissingIndex[$nodeUuid]);
+                    // Parent is no longer missing so remove index entry
+                    unset($this->nodeMissingIndex[$nodeUuid]);
+                }
+            }
+        }
+    }
+
     public function importIndex($data)
     {
         $date = Arr::get($data, 'export_date');
@@ -748,6 +887,9 @@ class ContentImporter
                 }
             }
             if (isset($data['content_objects'])) {
+                foreach ($data as $record) {
+                    $this->importContentObject($record);
+                }
             }
         } else if ($type == 'ez_section') {
             $this->importSection($data);
@@ -758,9 +900,274 @@ class ContentImporter
         } else if ($type == 'ez_contentclass') {
             $this->importContentClass($data);
         } else if ($type == 'ez_contentobject') {
+            $this->importContentObject($data);
         } else {
             throw new TypeError("Unsupported record type $type");
         }
         $this->lastRecordType = $type;
+    }
+
+    public function finalize()
+    {
+        // Check all missing parents and see if they exist in the database
+        foreach ($this->nodeMissingIndex as $nodeUuid => $children) {
+            $node = eZContentObjectTreeNode::fetchByRemoteID($nodeUuid);
+            if (!$node) {
+                continue;
+            }
+            //$this->addExistingNode($node, $nodeUuid, $children);
+        }
+
+        // TODO: Find remaining missing parents and reassign to start node
+
+        if ($this->verbose) {
+            echo "Creating node structure\n";
+        }
+        // Go over all starting nodes and starting building the tree structure
+        // for any new nodes/objects which are found, attributes and ownership is handled later
+        foreach ($this->nodeStartIndex as $nodeUuidList) {
+            foreach ($nodeUuidList as $nodeUuid) {
+                $nodeData = $this->nodeIndex[$nodeUuid];
+                $this->createNodeStructure($nodeData);
+            }
+        }
+
+        if ($this->verbose) {
+            echo "Updating content\n";
+        }
+        // Now go over all objects (via nodes) and fill in information on object and attributes.
+        foreach ($this->nodeStartIndex as $nodeUuidList) {
+            foreach ($nodeUuidList as $nodeUuid) {
+                $nodeData = $this->nodeIndex[$nodeUuid];
+                $this->updateNodeContent($nodeData);
+            }
+        }
+    }
+
+    /**
+     * Create objects with empty data and their locations, this is just to
+     * get a node id.
+     */
+    public function createNodeStructure($nodeData)
+    {
+        if ($nodeData['status'] === 'new') {
+            if ($this->verbose) {
+                echo "Creating node ", $nodeData['uuid'], "\n";
+            }
+            $nodeUuid = $nodeData['uuid'];
+            $objectData = $this->objectIndex[$nodeData['object_uuid']];
+            $objectUuid = $objectData['uuid'];
+            $translations = $objectData['translations'];
+            $languages = array_keys($translations);
+            if (!$languages) {
+                throw new ImportDenied("No translations found on object with uuid=" . $objectUuid);
+            }
+            $mainLanguage = array_shift($languages);
+            $objectManager = new ContentObject(array(
+                'uuid' => $objectUuid,
+                'identifier' => $objectData['class_identifier'],
+                'languageCode' => $mainLanguage,
+                // Do not create url alias yet
+                'updateNodePath' => false,
+            ));
+            $hasObject = false;
+            if ($objectManager->exists()) {
+                $hasObject = true;
+            }
+            if ($objectData['status'] === 'new') {
+                if ($hasObject) {
+                    throw new ImportDenied("Tried to create object uuid=" . $objectUuid . " but it already exists");
+                }
+            } else if ($objectData['status'] === 'created') {
+                $hasObject = true;
+            } else {
+                $hasObject = false;
+            }
+            $location = array(
+                'parent_uuid' => $nodeData['parent_uuid'],
+                'uuid' => $nodeUuid,
+                'is_main' => $nodeData['is_main'],
+            );
+            if ($nodeData['sort_by']) {
+                $location['sort_by'] = $nodeData['sort_by'];
+            }
+            if ($nodeData['priority']) {
+                $location['priority'] = $nodeData['priority'];
+            }
+            if ($nodeData['visibility']) {
+                $location['visibility'] = $nodeData['visibility'];
+            }
+            $objectManager->syncLocation($location);
+            if ($hasObject) {
+                $objectManager->update();
+                if ($this->verbose) {
+                    echo "Updated object id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), "\n";
+                }
+            } else {
+                $objectManager->create();
+                $contentObject = $objectManager->contentObject;
+                $this->objectIndex[$objectUuid]['id'] = $contentObject->attribute('id');
+                if ($this->verbose) {
+                    echo "Created object id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), "\n";
+                }
+            }
+            $nodes = $objectManager->nodes;
+            if (!isset($nodes[$nodeUuid])) {
+                $db = \eZDB::instance();
+                // var_dump(array(
+                //     'uuid' => $nodeUuid,
+                // ));
+                // var_dump($db->arrayQuery("SELECT node_id, remote_id FROM ezcontentobject_tree WHERE contentobject_id=" . $contentObject->attribute('id')));
+                throw new ImportDenied("Failed to create node with uuid=" . $nodeUuid);
+            }
+            $this->nodeIndex[$nodeUuid]['node_id'] = $nodes[$nodeUuid]['id'];
+            $this->nodeIndex[$nodeUuid]['status'] = 'created';
+            unset($this->newObjectQueue[$objectUuid]);
+        } else if ($nodeData['status'] === 'created') {
+            if ($this->verbose) {
+                echo "Node ", $nodeData['node_id'], " has already been created\n";
+            }
+        } else if ($nodeData['status'] === 'present') {
+            if ($this->verbose) {
+                echo "Node ", $nodeData['uuid'], " already exists\n";
+            }
+        } else if ($nodeData['status'] === 'reference') {
+            if ($this->verbose) {
+                echo "Node ", $nodeData['uuid'], " is a reference\n";
+            }
+        } else {
+            throw new ImportDenied("Reached node with unknown status='" . $nodeData['status'] . "'");
+        }
+
+        // Create child nodes
+        foreach ($nodeData['children'] as $childUuid) {
+            $childData = $this->nodeIndex[$childUuid];
+            $this->createNodeStructure($childData);
+        }
+    }
+
+    /**
+     * Updates the nodes and objects with information such as attributes and names.
+     * The updating is recursively trough all nodes and their children.
+     */
+    public function updateNodeContent($nodeData)
+    {
+        if ($nodeData['status'] === 'new') {
+            throw ImportDenied("Reached a node with status 'new' while updating node content");
+        }
+        if ($nodeData['status'] === 'created') {
+            if ($this->verbose) {
+                echo "Updating node ", $nodeData['uuid'], "\n";
+            }
+            $objectData = $this->objectIndex[$nodeData['object_uuid']];
+            $this->updateObjectContent($objectData);
+        } else if ($nodeData['status'] === 'present') {
+            if ($this->verbose) {
+                echo "Node ", $nodeData['uuid'], " already exists\n";
+            }
+        } else if ($nodeData['status'] === 'reference') {
+            if ($this->verbose) {
+                echo "Node ", $nodeData['uuid'], " is a reference\n";
+            }
+        } else {
+            throw new ImportDenied("Reached node with unknown status='" . $nodeData['status'] . "'");
+        }
+
+        // Create child nodes
+        foreach ($nodeData['children'] as $childUuid) {
+            $childData = $this->nodeIndex[$childUuid];
+            $this->updateNodeContent($childData);
+        }
+    }
+
+    /**
+     * Updates the objects with information such as attributes and names.
+     */
+    public function updateObjectContent($objectData)
+    {
+        $objectUuid = $objectData['uuid'];
+        $translations = $objectData['translations'];
+        $languages = array_keys($translations);
+        if (!$languages) {
+            throw new ImportDenied("No translations found on object with uuid=" . $objectUuid);
+        }
+        $mainLanguage = array_shift($languages);
+        $objectManager = new ContentObject(array(
+            'uuid' => $objectUuid,
+            'languageCode' => $mainLanguage,
+        ));
+        // Update all attributes
+        foreach ($objectData['translations'][$mainLanguage]['attributes'] as $identifier => $attributeData) {
+            $objectManager->setAttribute($identifier, array(
+                'content' => $attributeData,
+            ));
+        }
+        $mainUuid = null;
+        if (isset($objectData['main_node']['uuid'])) {
+            $mainUuid = $objectData['main_node']['uuid'];
+        }
+        // Now that all nodes are present the main node and visibility can be set
+        foreach ($objectData['locations'] as $locationData) {
+            $location = array(
+                'parent_uuid' => $locationData['parent_node_uuid'],
+                'uuid' => $locationData['uuid'],
+                'is_main' => $locationData['uuid'] == $mainUuid,
+                'visibility' => $locationData['visibility'],
+            );
+            $objectManager->updateLocation($location);
+        }
+        $objectManager->update();
+        $contentObject = $objectManager->contentObject;
+        if ($this->verbose) {
+            echo "Updated object id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), "\n";
+        }
+
+        // Mark object and nodes as present
+        $this->objectIndex[$objectUuid]['status'] = 'present';
+        foreach ($objectData['locations'] as $locationData) {
+            $this->nodeIndex[$locationData['uuid']]['status'] = 'present';
+        }
+    }
+
+    /**
+     * Adds an existing node object to the internal indexes.
+     * 
+     * @param $node The eZContentObjectTreeNode object to add
+     * @param $nodeUuid if null then uuid is fetched from $node
+     * @param $children Optional array of children uuids to add to node
+     */
+    public function addExistingNode($node, $nodeUuid=null, array $children=null, $isReference=false)
+    {
+        if ($nodeUuid === null) {
+            $nodeUuid = $node->remoteID();
+        }
+        $parentNode = $node->attribute('node_id') != 1 ? $node->fetchParent() : null;
+        $parentUuid = $parentNode ? $parentNode->remoteID() : null;
+        $contentObject = $node->object();
+        $this->nodeIndex[$nodeUuid] = array(
+            'uuid' => $nodeUuid,
+            'status' => $isReference ? 'reference' : 'present',
+            'parent_uuid' => $parentUuid,
+            'object_uuid' => $contentObject ? $contentObject->attribute('remote_id') : null,
+            'node_id' => $node->attribute('node_id'),
+            'children' => $children ? $children : array(),
+            'url_alias' => $node->urlAlias(),
+        );
+        // Connect to existing parents, or place in index for missing parents
+        if ($parentUuid && isset($this->nodeIndex[$parentUuid])) {
+            $this->nodeIndex[$parentUuid]['children'][] = $nodeUuid;
+        } else {
+            // If parent is not found it means this node is a starting point for tree traversal
+            // Mark the node in the index
+            if (!isset($this->nodeStartIndex[$parentUuid])) {
+                $this->nodeStartIndex[$parentUuid] = array();
+            }
+            $this->nodeStartIndex[$parentUuid][] = $nodeUuid;
+        }
+        if (isset($this->nodeStartIndex[$nodeUuid])) {
+            unset($this->nodeStartIndex[$nodeUuid]);
+        }
+        // Remove missing entry if it exists
+        unset($this->nodeMissingIndex[$nodeUuid]);
     }
 }
