@@ -722,11 +722,11 @@ class ContentImporter
             // TODO: Should be a way to allow certain data-type mismatches, e.g. ezstring to eztext, maybe via transforms?
             foreach ($typeMap as $attributeIdentifier => $attributeType) {
                 if (!isset($classDefinition['attributes'][$attributeIdentifier])) {
-                    throw new ImportDenied("Import of spare content-class $identifier failed, attribute $attributeIdentifier does not exist");
+                    throw new ImportDenied("Import of sparse content-class $identifier failed, attribute '$attributeIdentifier' does not exist");
                 }
                 $attributeDefinition = $classDefinition['attributes'][$attributeIdentifier];
                 if ($attributeDefinition['type'] != $attributeType) {
-                    throw new ImportDenied("Import of spare content-class $identifier failed, attribute $attributeIdentifier was expected to be of type $attributeType but is actually " . $attributeDefinition['type']);
+                    throw new ImportDenied("Import of sparse content-class $identifier failed, attribute '$attributeIdentifier' was expected to be of type $attributeType but is actually " . $attributeDefinition['type']);
                 }
             }
             $this->classIndex[$identifier]['remapping'] = $remappedTypeMap;
