@@ -13,6 +13,7 @@ use Aplia\Content\Exceptions\CreationError;
 use Aplia\Content\Exceptions\ContentError;
 use Aplia\Content\Exceptions\AttributeError;
 use Aplia\Content\ContentObjectAttribute;
+use eZINI;
 use eZContentClass;
 use eZContentObject;
 use eZContentObjectTreeNode;
