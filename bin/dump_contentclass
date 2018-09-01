@@ -221,10 +221,10 @@ foreach ($identifiers as $identifier) {
                 $attributeFields['content'] = $attributeCustomFields;
                 if ($attributeType == "ezobjectrelationlist" && isset($attributeFields['content']['default_placement'])) {
                     replaceWithUuidArray($attributeFields['content']['default_placement']);
-                    $attributeFields['content']['selection_type'] = $attribute->selectionTypeMap($attributeFields['content']['selection_type'], true);
+                    $attributeFields['content']['selection_type'] = $attribute->objectRelationSelectionTypeMap($attributeFields['content']['selection_type'], true);
                 } elseif ($attributeType == "ezobjectrelation" && isset($attributeFields['content']['default_selection_node'])) {
                     replaceWithUuidArray($attributeFields['content']['default_selection_node']);
-                    $attributeFields['content']['selection_type'] = $attribute->selectionTypeMap($attributeFields['content']['selection_type'], true);
+                    $attributeFields['content']['selection_type'] = $attribute->objectRelationSelectionTypeMap($attributeFields['content']['selection_type'], true);
                 }
             }
             $attributeFields['is_searchable'] = (bool)$classAttribute->attribute('is_searchable');
