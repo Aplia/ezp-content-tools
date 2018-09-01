@@ -1,6 +1,7 @@
 <?php
 namespace Aplia\Content;
 
+use Exception;
 use Aplia\Content\Exceptions\ObjectAlreadyExist;
 use Aplia\Content\Exceptions\UnsetValueError;
 use SimpleXMLElement;
