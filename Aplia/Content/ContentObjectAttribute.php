@@ -3,10 +3,14 @@ namespace Aplia\Content;
 
 use Exception;
 use Aplia\Support\Arr;
+use Aplia\Content\ImageFile;
+use Aplia\Content\HttpFile;
 use Aplia\Content\Exceptions\AttributeError;
 use Aplia\Content\Exceptions\ValueError;
 use Aplia\Content\Exceptions\UnsetValueError;
 use Aplia\Content\Exceptions\HtmlError;
+use Aplia\Content\Exceptions\FileDoesNotExist;
+use Aplia\Content\Exceptions\ContentError;
 
 class ContentObjectAttribute
 {
@@ -288,18 +292,20 @@ class ContentObjectAttribute
         $type = $attribute->attribute('data_type_string');
         $value = $this->value;
 
-        $asContent = false;
-        if ($type == 'ezxmltext') {
+        $asString = false;
+        if ($type === 'ezxmltext') {
             $this->updateXmlTextType($attribute, $value, $object);
-        } else if ($type == 'ezselection' && is_int($value)) {
-            $attribute->setAttribute( 'data_text', $value );
-        } else if ($type == 'ezimage') {
-            $this->updateImageType($attribute, $value);
+        } else if ($type === 'ezselection' && is_int($value)) {
+            $attribute->setAttribute('data_text', $value);
+        } else if ($type === 'ezimage') {
+            $this->updateImageType($object, $attribute, $value);
+        } else if ($type === 'ezbinaryfile') {
+            $this->updateBinaryFileType($object, $attribute, $value);
         } else {
-            $asContent = true;
+            $asString = true;
         }
 
-        if ($asContent) {
+        if ($asString) {
             $attribute->fromString($value);
         }
         $attribute->store();
@@ -407,15 +413,127 @@ class ContentObjectAttribute
      * Updates the attribute containing an ezimage datatype with the given
      * value. The value can be one of:
      *
+     * - array - Must contain 'path', may contain 'alternative_text' and 'original_filename'
+     * - ImageFile - Contains the path to the image file locally, with additional meta data
+     * - BinaryFile - Contains the path to the image file locally
      * - HttpFile - Contains the identifier of the POST variable containing
      *              the uploaded file. Is transferred to the attribute.
      *
      * @note This does not store the attribute content to the database.
      * @throws ValueError If $value is not one of the supported types above.
      */
-    public function updateImageType($attribute, $value)
+    public function updateImageType(ContentObject $object, eZContentObjectAttribute $attribute, $value)
     {
-        if ($value instanceof HttpFile) {
+        if (is_array($value)) {
+            if (isset($value['path'])) {
+                $value = new ImageFile(
+                    $value['path'],
+                    isset($value['alternative_text']) ? $value['alternative_text'] : null,
+                    isset($value['original_filename']) ? $value['original_filename'] : null
+                );
+            }
+        }
+
+        if ($value instanceof ImageFile) {
+            $path = $value->path;
+            if (!file_exists($path)) {
+                throw new FileDoesNotExist("The image file $path does not exist, cannot import image file to '" . $attribute->attribute('identifier') . "'");
+            }
+            $contentObject = $object->contentObject;
+            $contentVersion = $contentObject->currentVersion();
+            if (!$attribute->insertRegularFile($contentObject, $contentVersion, $this->language, $path, $result)) {
+                throw new ContentError("Failed to import file $path into ezimage attribute '" . $attribute->attribute('identifier') . "'");
+            }
+            $content = $attribute->content();
+            if ($value->originalFilename !== null) {
+                $content->setAttribute('original_filename', $value->originalFilename);
+            }
+            if ($value->alternativeText !== null) {
+                $content->setAttribute('alternative_text', $value->alternativeText);
+            }
+            $attribute->setContent($content);
+        } else if ($value instanceof BinaryFile) {
+            $path = $value->path;
+            if (!file_exists($path)) {
+                throw new FileDoesNotExist("The image file $path does not exist, cannot import image file to '" . $attribute->attribute('identifier') . "'");
+            }
+            $contentObject = $object->contentObject;
+            $contentVersion = $contentObject->currentVersion();
+            if (!$attribute->insertRegularFile($contentObject, $contentVersion, $this->language, $path, $result)) {
+                throw new ContentError("Failed to import file $path into ezimage attribute '" . $attribute->attribute('identifier') . "'");
+            }
+            $content = $attribute->content();
+            if ($value->originalFilename !== null) {
+                $content->setAttribute('original_filename', $value->originalFilename);
+            }
+            $attribute->setContent($content);
+        } else if ($value instanceof \eZHTTPFile) {
+            $contentObject = $object->contentObject;
+            $contentVersion = $contentObject->currentVersion();
+            $mimeData = eZMimeType::findByFileContents($value->attribute("original_filename"));
+            if (!$attribute->insertHTTPFile($contentObject, $contentVersion, $this->language, $attribute, $value, $mimeData, $result)) {
+                throw new ContentError("Failed to import HTTP file into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
+            }
+        } else if ($value instanceof HttpFile) {
+            $content = $attribute->attribute('content');
+            if ($value->hasFile && $value->isValid) {
+                $httpFile = \eZHTTPFile::fetch($value->name);
+                if ($httpFile && $content) {
+                    $content->setHTTPFile($httpFile);
+                }
+            }
+        } else {
+            throw new ValueError("Cannot update attribute data for '{$this->identifier}', unsupported content value: $value");
+        }
+    }
+
+    /**
+     * Updates the attribute containing an ezbinaryfile datatype with the given
+     * value. The value can be one of:
+     *
+     * - array - Must contain 'path', may contain 'original_filename'
+     * - ImageFile - Contains the path to the image file locally, with additional meta data
+     * - BinaryFile - Contains the path to the file locally
+     * - HttpFile - Contains the identifier of the POST variable containing
+     *              the uploaded file. Is transferred to the attribute.
+     *
+     * @note This does not store the attribute content to the database.
+     * @throws ValueError If $value is not one of the supported types above.
+     */
+    public function updateBinaryFileType(ContentObject $object, eZContentObjectAttribute $attribute, $value)
+    {
+        if (is_array($value)) {
+            if (isset($value['path'])) {
+                $value = new ImageFile(
+                    $value['path'],
+                    isset($value['original_filename']) ? $value['original_filename'] : null
+                );
+            }
+        }
+
+        if ($value instanceof ImageFile || $value instanceof BinaryFile) {
+            $path = $value->path;
+            if (!file_exists($path)) {
+                throw new FileDoesNotExist("The binary file $path does not exist, cannot import image file to '" . $attribute->attribute('identifier') . "'");
+            }
+            $contentObject = $object->contentObject;
+            $contentVersion = $contentObject->currentVersion();
+            if (!$attribute->insertRegularFile($contentObject, $contentVersion, $this->language, $path, $result)) {
+                throw new ContentError("Failed to import file $path into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
+            }
+            $content = $attribute->content();
+            if ($value->originalFilename !== null) {
+                $content->setAttribute('original_filename', $value->originalFilename);
+            }
+            $attribute->setContent($content);
+        } else if ($value instanceof \eZHTTPFile) {
+            $contentObject = $object->contentObject;
+            $contentVersion = $contentObject->currentVersion();
+            $mimeData = eZMimeType::findByFileContents($value->attribute("original_filename"));
+            if (!$attribute->insertHTTPFile($contentObject, $contentVersion, $this->language, $attribute, $value, $mimeData, $result)) {
+                throw new ContentError("Failed to import HTTP file into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
+            }
+        } else if ($value instanceof HttpFile) {
             $content = $attribute->attribute('content');
             if ($value->hasFile && $value->isValid) {
                 $httpFile = \eZHTTPFile::fetch($value->name);
