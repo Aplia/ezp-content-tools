@@ -24,8 +24,9 @@ $script = \eZScript::instance(
     )
 );
 $script->startup();
-$options = $script->getOptions("[parent-node:][config:]", "", array(
+$options = $script->getOptions("[parent-node:][config:][temp-path:]", "", array(
     "parent-node" => "Choose starting point for import of content objects, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id>, path:<alias-path>, or tree:<id> e.g tree:content, tree:media, tree:users, tree:top",
+    "temp-path" => "Path to place to use for temporary files",
 ));
 $script->initialize();
 
@@ -96,14 +97,20 @@ if (is_numeric($parentNodeId)) {
     $parentNode = \eZContentObjectTreeNode::fetch($contentIni->variable('NodeSettings', 'RootNode'));
 }
 $configFile = Arr::get($options, 'config');
+$tempPath = Arr::get($options, 'temp-path');
 
 $files = Arr::get($options, 'arguments');
 if (!$files) {
     $script->shutdown(1, "No import files specified");
 }
 
+if ($tempPath && !file_exists($tempPath)) {
+    mkdir($tempPath, 0777, true);
+}
+
 $options = array(
-    'start_node' => $parentNode,
+    'startNode' => $parentNode,
+    'fileStorage' => $tempPath,
 );
 
 // Login as admin user to make sure we have access to all content
@@ -178,6 +185,7 @@ function parseJson(ContentImporter $importer, $filePath) {
     $importer->importRecord($record);
 }
 
+$importer = null;
 try {
     $importer = new ContentImporter($options);
     if ($configFile) {
@@ -201,11 +209,19 @@ try {
     $cli->output("Finalizing imported data");
     $importer->finalize();
     $cli->output("Imported " . $importer->recordCount . " records");
+
+    $importer->cleanupTemporary();
 } catch (\Aplia\Content\Exceptions\ImportDenied $e) {
     $db->rollback();
+    if ($importer) {
+        $importer->cleanupTemporary();
+    }
     $script->shutdown(1, $e->getMessage());
 } catch (\Exception $e) {
     $db->rollback();
+    if ($importer) {
+        $importer->cleanupTemporary();
+    }
     throw $e;
     $script->shutdown(1, $e->getMessage());
 }

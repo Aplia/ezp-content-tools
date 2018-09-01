@@ -2,6 +2,8 @@
 namespace Aplia\Content;
 use DateTime;
 use Aplia\Support\Arr;
+use Aplia\Content\BinaryFile;
+use Aplia\Content\ImageFile;
 use Aplia\Content\Exceptions\ImportDenied;
 use Aplia\Content\Exceptions\UnsetValueError;
 use Aplia\Content\Exceptions\TypeError;
@@ -17,9 +19,11 @@ class ContentImporter
     public $hasBundle = false;
     public $recordCount = 0;
 
+    public $interactive = true;
     public $askOverwrite = true;
     public $askNew = true;
     public $verbose = true;
+    public $fileStorage;
 
     // Maps section identifier to an object/class that will transform the content
     public $transformSection = array();
@@ -47,6 +51,7 @@ class ContentImporter
     // property $classIndex = array();
     public $objectIndex = array();
     public $nodeIndex = array();
+    public $fileIndex = array();
     // Keeps track of new nodes which are missing the parent nodes
     // If it contains entries after finalize() these entries needs to be remapped to the startNode
     public $nodeMissingIndex = array();
@@ -57,10 +62,18 @@ class ContentImporter
     // Queues, processed after import has collected data
     // List of uuids of all objects that are to be created, references $objectIndex
     public $newObjectQueue = array();
+    // Contains a list of files which are created during import and should
+    // be removed after import is completed.
+    public $tempFiles = array();
 
     public function __construct(array $options = null) {
-        if (isset($options['start_node'])) {
+        if (isset($options['startNode'])) {
+            $this->startNode = $options['startNode'];
+        } else if (isset($options['start_node'])) {
             $this->startNode = $options['start_node'];
+        }
+        if (isset($options['fileStorage'])) {
+            $this->fileStorage = $options['fileStorage'];
         }
         if (!$this->startNode) {
             throw new UnsetValueError("ContentImporter requires start_node set");
@@ -97,6 +110,14 @@ class ContentImporter
             return $default;
         }
         return trim(strtolower($result));
+    }
+
+    public function promptRaw($prompt, $default) {
+        $result = readline($prompt);
+        if (!trim($result)) {
+            return $default;
+        }
+        return trim($result);
     }
 
     public function promptRequired($prompt, $values, $aliases=null) {
@@ -363,6 +384,65 @@ class ContentImporter
             }
         }
         return $identifier;
+    }
+
+    public function importFile($fileData)
+    {
+        if (!isset($fileData['uuid'])) {
+            throw new TypeError("Key 'uuid' missing from file record");
+        }
+        $uuid = $fileData['uuid'];
+        $isTemporary = false;
+        $originalPath = isset($fileData['original_path']) ? $fileData['original_path'] : null;
+        if (isset($fileData['content_b64'])) {
+            if ($this->fileStorage === null) {
+                $fileStorage = null;
+                if ($this->interactive) {
+                    echo "Import contains embedded file data and no storage folder has been set\n";
+                    $fileStorage = $this->promptRaw("Path to temporary storage (empty to quit): ", "");
+                }
+                if (!$fileStorage) {
+                    throw new ImportDenied("Cannot import embedde file data without a storage folder");
+                }
+                $this->fileStorage = $fileStorage;
+                if (!is_dir($this->fileStorage)) {
+                    mkdir($this->fileStorage, 0777, true);
+                }
+            }
+            $filePath = $this->fileStorage . '/' . $uuid;
+            if ($originalPath && ($pos = strrpos($originalPath, "."))) {
+                $filePath = $filePath . substr($originalPath, $pos);
+            }
+            file_put_contents($filePath, base64_decode($fileData['content_b64'], true));
+            $isTemporary = true;
+            unset($fileData['content_b64']);
+        } else {
+            if (!isset($fileData['path'])) {
+                throw new TypeError("File record has neither 'path' nor 'content_b64' set, cannot import");
+            }
+            $filePath = $fileData['path'];
+        }
+        $this->fileIndex[$uuid] = array(
+            'uuid' => $uuid,
+            'status' => 'new',
+            'path' => $filePath,
+            'md5' => isset($fileData['md5']) ? $fileData['md5'] : null,
+            'original_path' => $originalPath,
+            'has_temp_file' => $isTemporary,
+        );
+        if ($isTemporary) {
+            $this->tempFiles[$uuid] = $filePath;
+        }
+    }
+
+    public function cleanupTemporary()
+    {
+        foreach ($this->tempFiles as $idx => $filePath) {
+            if (file_exists($filePath)) {
+                unlink($filePath);
+            }
+            unset($this->tempFiles[$idx]);
+        }
     }
 
     public function importSection($sectionData)
@@ -929,6 +1009,9 @@ class ContentImporter
                     $this->recordCount += 1;
                 }
             }
+        } else if ($type == 'file') {
+            $this->importFile($data);
+            $this->recordCount += 1;
         } else if ($type == 'ez_section') {
             $this->importSection($data);
             $this->recordCount += 1;
@@ -1178,8 +1261,11 @@ class ContentImporter
             'ownerUuid' => $ownerUuid,
         ));
         // Update all attributes
+        $classData = $this->classIndex[$objectData['class_identifier']];
         if (isset($objectData['attributes']) && $objectData['attributes']) {
             foreach ($objectData['attributes'] as $identifier => $attributeData) {
+                $dataType = $classData['attributes'][$identifier];
+                $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
                 $objectManager->setAttribute($identifier, array(
                     'content' => $attributeData,
                 ));
@@ -1188,6 +1274,8 @@ class ContentImporter
         if (isset($translations[$mainLanguage]['attributes']) &&
             $translations[$mainLanguage]['attributes']) {
             foreach ($translations[$mainLanguage]['attributes'] as $identifier => $attributeData) {
+                $dataType = $classData['attributes'][$identifier];
+                $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
                 $objectManager->setAttribute($identifier, array(
                     'content' => $attributeData,
                 ));
@@ -1248,6 +1336,50 @@ class ContentImporter
         foreach ($objectData['locations'] as $locationData) {
             $this->nodeIndex[$locationData['uuid']]['status'] = 'present';
         }
+    }
+
+    /**
+     * Process data structure for attribute content before it is passed to
+     * ContentObjectAttribute/setAttribute. This allows for looking up identifiers
+     * and transforming into values that the data-types expect.
+     */
+    public function processAttributeData($identifier, $dataType, $attributeData)
+    {
+        if ($dataType === 'ezimage') {
+            if (isset($attributeData['uuid'])) {
+                $uuid = $attributeData['uuid'];
+                if (!isset($this->fileIndex[$uuid])) {
+                    throw new ImportDenied("ezbinaryfile attribute $identifier references file with UUID $uuid but it does not exist");
+                }
+                $file = $this->fileIndex[$uuid];
+                $filePath = $file['file_path'];
+                return new ImageFile(array(
+                    'alternative_text' => Arr::get($attributeData, 'alternative_text'),
+                    'original_filename' => Arr::get($attributeData, 'original_filename'),
+                    'path' => $filePath,
+                ));
+            } else {
+                // No uuid so nothing to import
+                return null;
+            }
+        } else if ($dataType === 'ezbinaryfile') {
+            if (isset($attributeData['uuid'])) {
+                $uuid = $attributeData['uuid'];
+                if (!isset($this->fileIndex[$uuid])) {
+                    throw new ImportDenied("ezbinaryfile attribute $identifier references file with UUID $uuid but it does not exist");
+                }
+                $file = $this->fileIndex[$uuid];
+                $filePath = $file['file_path'];
+                return new BinaryFile(array(
+                    'original_filename' => Arr::get($attributeData, 'original_filename'),
+                    'path' => $filePath,
+                ));
+            } else {
+                // No uuid so nothing to import
+                return null;
+            }
+        }
+        return $attributeData;
     }
 
     /**
