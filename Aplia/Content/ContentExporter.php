@@ -125,7 +125,9 @@ class ContentExporter
             } else {
                 $state = $this->stateIdMap[$stateId];
             }
-            $data['states'][$group->attribute('identifier')] = $state->attribute('identifier');
+            if ($state) {
+                $data['states'][$group->attribute('identifier')] = $state->attribute('identifier');
+            }
         }
 
         // Add related objects, referenced by UUID, includes ID, name and class identifier to make
