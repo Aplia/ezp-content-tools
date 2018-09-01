@@ -83,7 +83,7 @@ if ($classNames) {
 }
 $depth = Arr::get($options, 'depth');
 $depthChoice = $depth;
-if (!$depth) {
+if ($depth === null || $depth === '') {
     // Default to depth 1 as it is the safest
     $depth = 1;
     $depthChoice = $depth;
@@ -254,7 +254,9 @@ if ($format === "line") {
     if ($includeParent) {
         $exporter->addNode($parentNode);
     }
-    $exporter->addQuery($query);
+    if ($depth !== 0) {
+        $exporter->addQuery($query);
+    }
     $exporter->finalize();
     $index = $exporter->createIndex();
     $index['export'] = $exportChoices;
@@ -270,7 +272,9 @@ if ($format === "line") {
     if ($includeParent) {
         $exporter->addNode($parentNode);
     }
-    $exporter->addQuery($query);
+    if ($depth !== 0) {
+        $exporter->addQuery($query);
+    }
     $exporter->finalize();
     $data = array(
         '__type__' => 'ez_content_bundle',
@@ -325,7 +329,9 @@ EOT;
     if ($includeParent) {
         $exporter->addNode($parentNode);
     }
-    $exporter->addQuery($query);
+    if ($depth !== 0) {
+        $exporter->addQuery($query);
+    }
     $exporter->finalize();
     $data = array(
         '__type__' => 'ez_content_bundle',
