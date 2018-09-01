@@ -159,15 +159,32 @@ if (is_numeric($parentNodeId)) {
     if (!$parentNode) {
         $script->shutdown(1, "Parent node $parentNodeId does not exist");
     }
+} else if (preg_match("/^(ez)?node_uuid:([a-f0-9-]+)$/i", $parentNodeId, $matches)) {
+    $parentNodeUuid = strtolower(str_replace("-", "", $matches[2]));
+    $parentNode = \eZContentObjectTreeNode::fetchByRemoteID($parentNodeUuid);
+    if (!$parentNode) {
+        $script->shutdown(1, "Parent node with UUID $parentNodeUuid does not exist");
+    }
 } else if (preg_match("/^(ez)?object:([0-9]+)$/", $parentNodeId, $matches)) {
-    $parentContentId = $matches[2];
-    $parentObject = \eZContentObject::fetch($parentContentId);
+    $parentObjectId = $matches[2];
+    $parentObject = \eZContentObject::fetch($parentObjectId);
     if (!$parentObject) {
         $script->shutdown(1, "Parent object $parentObjectId does not exist");
     }
     $parentNode = $parentObject->mainNode();
     if (!$parentNode) {
         $script->shutdown(1, "Parent object $parentObjectId does not have main-node");
+    }
+    $parentNodeId = $parentNode->attribute('node_id');
+} else if (preg_match("/^(ez)?object_uuid:([a-f0-9-]+)$/i", $parentNodeId, $matches)) {
+    $parentObjectUuid = strtolower(str_replace("-", "", $matches[2]));
+    $parentObject = \eZContentObject::fetchByRemoteID($parentObjectUuid);
+    if (!$parentObject) {
+        $script->shutdown(1, "Parent object with UUID $parentObjectUuid does not exist");
+    }
+    $parentNode = $parentObject->mainNode();
+    if (!$parentNode) {
+        $script->shutdown(1, "Parent object with UUID $parentObjectUuid does not have main-node");
     }
     $parentNodeId = $parentNode->attribute('node_id');
 } else if (preg_match("/^path:(.+)$/", $parentNodeId, $matches)) {
