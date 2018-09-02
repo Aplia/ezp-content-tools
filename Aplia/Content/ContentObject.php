@@ -1355,10 +1355,9 @@ class ContentObject
                 $content = isset($attr['content']) ? $attr['content'] : null;
             }
         } else if ($argc == 2) {
-            if (is_array($content)) {
-                $attr = $content;
-                $content = $attr['content'];
-            }
+            $attr = array(
+                'content' => $content,
+            );
         } else {
             if (!$attr) {
                 $attr = array();
