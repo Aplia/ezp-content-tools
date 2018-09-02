@@ -235,11 +235,18 @@ class ContentObjectAttribute
                 return null;
             }
             $hashType = \eZUser::passwordHashTypeName($this->value->attribute('password_hash_type'));
-            return array(
+            $value = array(
                 'login' => $this->value->attribute('login'),
                 'email' => $this->value->attribute('email'),
                 'password_hash' => $hashType . '$' . $this->value->attribute('password_hash'),
             );
+            $userSetting = \eZUserSetting::fetch(
+                $this->value->attribute( 'contentobject_id' )
+            );
+            if ($userSetting) {
+                $value['is_enabled'] = (bool)$userSetting->attribute('is_enabled');
+            }
+            return $value;
         } else if ($type == 'eztags') {
             if (!$this->value) {
                 return null;
@@ -301,6 +308,38 @@ class ContentObjectAttribute
             $this->updateImageType($object, $attribute, $value);
         } else if ($type === 'ezbinaryfile') {
             $this->updateBinaryFileType($object, $attribute, $value);
+        } else if ($type === 'ezuser' ) {
+            if (is_array($value)) {
+                if (isset($value['login']) && isset($value['email'])) {
+                    $userData = array($value['login'], $value['email']);
+                    if (isset($value['password_hash'])) {
+                        $hashValues = explode('$', $value['password_hash'], 2);
+                        if (count($hashValues) != 2) {
+                            throw new ValueError("'password_hash' entry is of unsupported format: " . var_export($value['password_hash'], true));
+                        }
+                        $hashType = \eZUser::passwordHashTypeID($hashValues[0]);
+                        if ($hashType === null) {
+                            throw new ValueError("'password_hash' entry has unsupported hash-type '${hashValues[0]}'");
+                        }
+                        $userData[] = $hashValues[1];
+                        $userData[] = $hashType;
+                    } else {
+                        $userData[] = '';
+                        $userData[] = '0';
+                    }
+                    if (isset($value['is_enabled'])) {
+                        $userData[] = (int)(bool)$value['is_enabled'];
+                    }
+                    $value = implode("|", $userData);
+                    $asString = true;
+                } else {
+                    throw new ValueError("Array passed to ezuser attribute '" . $attribute->attribute('identifier') . "' does not have a login and email set");
+                }
+            } else if (is_string($value)) {
+                $asString = true;
+            } else if ($value) {
+                throw new TypeError("Value passed to ezuser attribute '" . $attribute->attribute('identifier') . "' is not supported: " . var_export($value, true));
+            }
         } else {
             $asString = true;
         }
