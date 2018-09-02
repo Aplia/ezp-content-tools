@@ -369,26 +369,6 @@ EOT;
             if (isset($contentObject['uuid'])) {
                 $params['uuid'] = $contentObject['uuid'];
             }
-            if (isset($contentObject['locations'])) {
-                $params['locations'] = array();
-                foreach ($contentObject['locations'] as $nodeId => $contentNode) {
-                    if ($topLevelParentNodeId &&
-                        (isset($contentNode['original_depth']) && isset($options['start_depth'])) &&
-                        ($contentNode['original_depth'] == $options['start_depth'] + 1)) {
-                        if (is_numeric($topLevelParentNodeId)) {
-                            $params['locations'][] = array('parent_id' => $topLevelParentNodeId);
-                        } else {
-                            $script->shutdown(1, "Parameter 'update-first-parent' expected a node id, but got '$topLevelParentNodeId'");
-                        }
-                    } else {
-                        if (isset($contentNode['parent_node_uuid'])) {
-                            $params['locations'][] = array('parent_uuid' => $contentNode['parent_node_uuid']);
-                        } else {
-                            $script->shutdown(1, "Parent node uuid not defined in content object $contentObjectId");
-                        }
-                    }
-                }
-            }
             $objectName = $contentObject['name'];
             $uuidString = isset($params['uuid']) ? ", uuid: ".$params['uuid'] : "";
             $className = $contentObject['class_identifier'];
@@ -401,7 +381,35 @@ EOT;
                 echo "\n".$classNameRepr." = new ${contentTypeClass}('${className}');\n";
             }
 
-            echo $classNameRepr."->contentObject(\n".indentTextLines(var_export($params, true))."\n)\n";
+            echo "${classNameRepr}->contentObject(\n" . indentTextLines(var_export($params, true))."\n)\n";
+
+            if (isset($contentObject['locations'])) {
+                $params['locations'] = array();
+                foreach ($contentObject['locations'] as $nodeId => $contentNode) {
+                    if ($topLevelParentNodeId &&
+                        (isset($contentNode['original_depth']) && isset($options['start_depth'])) &&
+                        ($contentNode['original_depth'] == $options['start_depth'] + 1)) {
+                        if (is_numeric($topLevelParentNodeId)) {
+                            $locationData = var_export(array(
+                                'parent_id' => $topLevelParentNodeId,
+                            ), true);
+                            echo "->addLocation($locationData)\n"; 
+                        } else {
+                            $script->shutdown(1, "Parameter 'update-first-parent' expected a node id, but got '$topLevelParentNodeId'");
+                        }
+                    } else {
+                        if (isset($contentNode['parent_node_uuid'])) {
+                            $locationData = var_export(array(
+                                'parent_uuid' => $contentNode['parent_node_uuid'],
+                                'uuid' => $contentNode['uuid'],
+                            ), true);
+                            echo "->addLocation($locationData)\n"; 
+                        } else {
+                            $script->shutdown(1, "Parent node uuid not defined in content object $contentObjectId");
+                        }
+                    }
+                }
+            }
 
             if (isset($contentObject['translations']['nor-NO']['attributes'])) {
                 $objectAttributes = array_merge($objectAttributes, $contentObject['translations']['nor-NO']['attributes']);
