@@ -211,7 +211,7 @@ class ContentTypeAttribute
      */
     public function makeNodeArray($nodeId)
     {
-        if ($nodeId === null) {
+        if (!$nodeId) {
             return null;
         }
         if (is_numeric($nodeId)) {
@@ -339,28 +339,19 @@ class ContentTypeAttribute
             if (isset($value['type'])) {
                 $content['type'] = $value['type'];
             }
+            if (isset($value['object_class'])) {
+                $classIdentifier = $this->findClassIdentifier($value['object_class']);
+                if (!$classIdentifier) {
+                    $classIdentifier = null;
+                }
+                $content['object_class'] = $classIdentifier;
+            }
             if (isset($value['class_constraint_list']) && is_array($value['class_constraint_list'])) {
                 $classList = array();
                 foreach ($value['class_constraint_list'] as $classDef) {
-                    if (is_array($classDef)) {
-                        $class = null;
-                        $classIdentifier = null;
-                        if (isset($classDef['uuid'])) {
-                            $class = eZContentClass::fetchByRemoteID($classDef['uuid']);
-                            if ($class) {
-                                $classIdentifier =$class->attribute('identifier');
-                            }
-                        }
-                        if (!$class && isset($classDef['identifier'])) {
-                            $classIdentifier = $classDef['identifier'];
-                        }
-                        if ($classIdentifier) {
-                            $classList[] = $classIdentifier;
-                        }
-                    } else if (is_string($classDef)) {
-                        $classList[] = $classDef;
-                    } else if ($classDef instanceof eZContentClass) {
-                        $classList[] = $classDef->attribute('identifier');
+                    $classIdentifier = $this->findClassIdentifier($classDef);
+                    if ($classIdentifier) {
+                        $classList[] = $classIdentifier;
                     }
                 }
                 $classList = array_unique($classList);
@@ -371,9 +362,27 @@ class ContentTypeAttribute
             // Let the datatype set the values using class-content value
             // This requires that the datatype actually supports this
             // Data-types known to work for this are:
-            // - ezobjectrelation
-            // - ezobjectrelationlist
             $content = $value;
+        }
+    }
+
+    public function findClassIdentifier($definition)
+    {
+        if (is_array($definition)) {
+            $class = null;
+            if (isset($definition['uuid'])) {
+                $class = eZContentClass::fetchByRemoteID($definition['uuid']);
+                if ($class) {
+                    return $class->attribute('identifier');
+                }
+            }
+            if (!$class && isset($definition['identifier'])) {
+                return $definition['identifier'];
+            }
+        } else if (is_string($definition)) {
+            return $definition;
+        } else if ($definition instanceof eZContentClass) {
+            return $definition->attribute('identifier');
         }
     }
 
@@ -454,10 +463,25 @@ class ContentTypeAttribute
                     );
                 }
             }
+            $objectClass = Arr::get($content, 'object_class');
+            if ($objectClass) {
+                $class = eZContentClass::fetchByIdentifier($objectClass);
+                if ($class) {
+                    $objectClass = array(
+                        'uuid' => $class->remoteID(),
+                        'identifier' => $class->attribute('identifier'),
+                    );
+                } else {
+                    $objectClass = null;
+                }
+            } else {
+                $objectClass = null;
+            }
             return array(
                 'selection_type' => $this->objectRelationSelectionTypeMap(Arr::get($content, 'selection_type'), /*getName*/true),
                 'default_placement' => $this->makeNodeArray(Arr::get($content, 'default_placement')),
                 'type' => Arr::get($content, 'type'),
+                'object_class' => $objectClass,
                 'class_constraint_list' => $classList,
             );
         } else {
