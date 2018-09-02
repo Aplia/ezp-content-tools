@@ -1041,7 +1041,7 @@ class ContentImporter
             if (!$node) {
                 continue;
             }
-            //$this->addExistingNode($node, $nodeUuid, $children);
+            $this->addExistingNode($node, $nodeUuid, $children);
         }
 
         // TODO: Find remaining missing parents and reassign to start node
