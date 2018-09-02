@@ -7,6 +7,7 @@ use Aplia\Content\ImageFile;
 use Aplia\Content\HttpFile;
 use Aplia\Content\Exceptions\AttributeError;
 use Aplia\Content\Exceptions\ValueError;
+use Aplia\Content\Exceptions\TypeError;
 use Aplia\Content\Exceptions\UnsetValueError;
 use Aplia\Content\Exceptions\HtmlError;
 use Aplia\Content\Exceptions\FileDoesNotExist;
