@@ -461,7 +461,7 @@ class ContentObjectAttribute
      * @note This does not store the attribute content to the database.
      * @throws ValueError If $value is not one of the supported types above.
      */
-    public function updateImageType(ContentObject $object, eZContentObjectAttribute $attribute, $value)
+    public function updateImageType(ContentObject $object, \eZContentObjectAttribute $attribute, $value)
     {
         if (is_array($value)) {
             if (isset($value['path'])) {
@@ -539,7 +539,7 @@ class ContentObjectAttribute
      * @note This does not store the attribute content to the database.
      * @throws ValueError If $value is not one of the supported types above.
      */
-    public function updateBinaryFileType(ContentObject $object, eZContentObjectAttribute $attribute, $value)
+    public function updateBinaryFileType(ContentObject $object, \eZContentObjectAttribute $attribute, $value)
     {
         if (is_array($value)) {
             if (isset($value['path'])) {
