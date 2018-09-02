@@ -4,7 +4,12 @@ namespace Aplia\Content;
 use Exception;
 use Aplia\Content\Exceptions\ObjectAlreadyExist;
 use Aplia\Content\Exceptions\UnsetValueError;
+use Aplia\Content\Exceptions\ValueError;
+use Aplia\Content\Exceptions\ObjectDoesNotExist;
+use Aplia\Support\Arr;
 use SimpleXMLElement;
+use eZContentClass;
+use eZContentObjectTreeNode;
 
 class ContentTypeAttribute
 {
@@ -159,25 +164,31 @@ class ContentTypeAttribute
             $return = $map[$valueOrKey];
         } else {
             $key = array_search($valueOrKey, $map);
-            $return = $key ? $key : $valueOrKey;
+            $return = $key !== false ? $key : $valueOrKey;
         }
 
         return $return;
     }
 
+    /**
+     * Finds the node ID from an array or numeric value.
+     * 
+     * @param $arrayOrNodeId Array structure with uuid/node_id or a numerical ID
+     * @return integer The node ID
+     * @throws ValueError 
+     */
     public function relatedNodeId($arrayOrNodeId)
     {
-        $nodeId = 0;
+        $nodeId = null;
 
         if (is_array($arrayOrNodeId) && isset($arrayOrNodeId['uuid'])) {
             $uuid = $arrayOrNodeId['uuid'];
-            $node = \eZContentObjectTreeNode::fetchByRemoteID($uuid, false);
-            if ($node && isset($node['node_id'])) {
-                $nodeId = $node['node_id'];
-            } else {
+            $node = eZContentObjectTreeNode::fetchByRemoteID($uuid, false);
+            if (!$node) {
                 $nameErrorString = isset($arrayOrNodeId['name']) ? '(name: '.$arrayOrNodeId['name'].')' : '';
-                throw new Exception("Node for uuid $uuid $nameErrorString not defined for $this->type in $this->name");
+                throw new ValueError("Node for uuid $uuid $nameErrorString not defined for $this->type in $this->name");
             }
+            $nodeId = $node['node_id'];
         } elseif (is_numeric($arrayOrNodeId)) {
             $nodeId = $arrayOrNodeId;
         } elseif (isset($arrayOrNodeId['node_id'])) {
@@ -185,6 +196,51 @@ class ContentTypeAttribute
         }
 
         return $nodeId;
+    }
+
+    /**
+     * Looks up the node and returns an array with information about
+     * UUID and node id.
+     * 
+     * If $nodeId is null it returns null.
+     * 
+     * @param $nodeId is either a numeric ID or an eZContentObjectTreeNode instance
+     * @return array
+     * @throws ObjectDoesNotExist If the referenced node does not exist
+     * @throws ValueError If the input parameter does not have a supported value
+     */
+    public function makeNodeArray($nodeId)
+    {
+        if ($nodeId === null) {
+            return null;
+        }
+        if (is_numeric($nodeId)) {
+            $node = eZContentObjectTreeNode::fetch($nodeId);
+            if (!$node) {
+                throw new ObjectDoesNotExist("Content node with ID $nodeId does not exist");
+            }
+        } else if ($nodeId instanceof eZContentObjectTreeNode) {
+            $node = $nodeId;
+        } else if (is_string($nodeId) && substr($nodeId, 0, 5) === 'uuid:') {
+            $nodeId = substr($nodeId, 5);
+            $node = eZContentObjectTreeNode::fetch($nodeId);
+            if (!$node) {
+                throw new ObjectDoesNotExist("Content node with ID $nodeId does not exist");
+            }
+        } else if (is_array($nodeId) && isset($nodeId['node_id'])) {
+            $nodeId = $nodeId['node_id'];
+            $node = eZContentObjectTreeNode::fetch($nodeId);
+            if (!$node) {
+                throw new ObjectDoesNotExist("Content node with ID $nodeId does not exist");
+            }
+        } else {
+            throw new ValueError("Unsupported value for looking up node: " . var_export($nodeId, true));
+        }
+        return array(
+            'node_id' => (int)$node->attribute('node_id'),
+            'uuid' => $node->remoteID(),
+            'name' => $node->getName($this->language),
+        );
     }
 
     /**
@@ -260,16 +316,22 @@ class ContentTypeAttribute
         } else if ($type == 'ezobjectrelation') {
             if (isset($value['selection_type'])) {
                 $content['selection_type'] = $this->objectRelationSelectionTypeMap($value['selection_type']);
+            } else if (!isset($content['selection_type'])) {
+                $content['selection_type'] = $this->objectRelationSelectionTypeMap('browse_multi');
             }
             if (isset($value['default_selection_node'])) {
                 $content['default_selection_node'] = $this->relatedNodeId($value['default_selection_node']);
             }
             if (isset($value['fuzzy_match'])) {
                 $content['fuzzy_match'] = $value['fuzzy_match'];
+            } else if (!isset($content['fuzzy_match'])) {
+                $content['fuzzy_match'] = false;
             }
         } else if ($type == 'ezobjectrelationlist') {
             if (isset($value['selection_type'])) {
                 $content['selection_type'] = $this->objectRelationSelectionTypeMap($value['selection_type']);
+            } else if (!isset($content['selection_type'])) {
+                $content['selection_type'] = $this->objectRelationSelectionTypeMap('browse_multi');
             }
             if (isset($value['default_placement'])) {
                 $content['default_placement']['node_id'] = $this->relatedNodeId($value['default_placement']);
@@ -277,8 +339,32 @@ class ContentTypeAttribute
             if (isset($value['type'])) {
                 $content['type'] = $value['type'];
             }
-            if (isset($value['class_constraint_list'])) {
-                $content['class_constraint_list'] = $value['class_constraint_list'];
+            if (isset($value['class_constraint_list']) && is_array($value['class_constraint_list'])) {
+                $classList = array();
+                foreach ($value['class_constraint_list'] as $classDef) {
+                    if (is_array($classDef)) {
+                        $class = null;
+                        $classIdentifier = null;
+                        if (isset($classDef['uuid'])) {
+                            $class = eZContentClass::fetchByRemoteID($classDef['uuid']);
+                            if ($class) {
+                                $classIdentifier =$class->attribute('identifier');
+                            }
+                        }
+                        if (!$class && isset($classDef['identifier'])) {
+                            $classIdentifier = $classDef['identifier'];
+                        }
+                        if ($classIdentifier) {
+                            $classList[] = $classIdentifier;
+                        }
+                    } else if (is_string($classDef)) {
+                        $classList[] = $classDef;
+                    } else if ($classDef instanceof eZContentClass) {
+                        $classList[] = $classDef->attribute('identifier');
+                    }
+                }
+                $classList = array_unique($classList);
+                $content['class_constraint_list'] = $classList;
             }
         } else {
 
@@ -348,12 +434,36 @@ class ContentTypeAttribute
             $fields = $attribute->content();
             $fields['is_multiselect'] = (bool)$fields['is_multiselect'];
             return $fields;
+        } else if ($type == 'ezobjectrelation') {
+            $content = $attribute->content();
+            return array(
+                'selection_type' => $this->objectRelationSelectionTypeMap(Arr::get($content, 'selection_type'), /*getName*/true),
+                'default_selection_node' => $this->makeNodeArray(Arr::get($content, 'default_selection_node')),
+                'fuzzy_match' => (bool)Arr::get($content, 'fuzzy_match'),
+            );
+        } else if ($type == 'ezobjectrelationlist') {
+            $content = $attribute->content();
+            $classList = array();
+            $classIdentifierList = Arr::get($content, 'class_constraint_list');
+            foreach ($classIdentifierList as $classIdentifier) {
+                $class = eZContentClass::fetchByIdentifier($classIdentifier);
+                if ($class) {
+                    $classList[] = array(
+                        'uuid' => $class->remoteID(),
+                        'identifier' => $class->attribute('identifier'),
+                    );
+                }
+            }
+            return array(
+                'selection_type' => $this->objectRelationSelectionTypeMap(Arr::get($content, 'selection_type'), /*getName*/true),
+                'default_placement' => $this->makeNodeArray(Arr::get($content, 'default_placement')),
+                'type' => Arr::get($content, 'type'),
+                'class_constraint_list' => $classList,
+            );
         } else {
             // Let the datatype set the values using class-content value
             // This requires that the datatype actually supports this
             // Data-types known to work for this are:
-            // - ezobjectrelation
-            // - ezobjectrelationlist
             // throw new \Exception("Unsupported data-type $type, cannot export fields");
             return $attribute->content();
         }
