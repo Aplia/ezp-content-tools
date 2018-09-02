@@ -882,7 +882,7 @@ class ContentImporter
             }
             if (!$hasMain) {
                 $locations[0]['is_main'] = true;
-                $mainNodeUuid = $location[0]['uuid'];
+                $mainNodeUuid = $locations[0]['uuid'];
                 $this->objectIndex[$uuid]['main_node_uuid'] = $mainNodeUuid;
             }
             foreach ($locations as $idx => $location) {
@@ -890,7 +890,7 @@ class ContentImporter
                 $parentUuid = $location['parent_node_uuid'];
                 if (isset($this->nodeIndex[$nodeUuid])) {
                     if ($this->verbose) {
-                        echo "Content-node with uuid $nodeUuuid already exists, skipping\n";
+                        echo "Content-node with uuid $nodeUuid already exists, skipping\n";
                     }
                     continue;
                 }
