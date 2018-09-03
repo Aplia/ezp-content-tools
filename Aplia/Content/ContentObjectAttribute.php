@@ -301,7 +301,19 @@ class ContentObjectAttribute
         $dataType = $attribute->dataType();
         $value = $this->value;
 
+        // Updating the content for an object attribute requires either setting
+        // the fields directly (e.g. data_int or data_text) or passing value as
+        // a string to be decoded with fromString(), or a mixture.
+        // The exact behaviour depends on the data-type as there is no API for
+        // setting the content of an attribute and the behaviour varies so much.
+        //
+        // If the content can be import as a string set $asString to true and
+        // make sure $value contains the string value.
+        //
+        // The default for unknown data-types is to try and import as a string
         $asString = false;
+        // If true then $value is set with setContent(), false then it consideres $asString
+        $asContent = false;
         if ($type === 'ezxmltext') {
             $this->updateXmlTextType($attribute, $value, $object);
         } else if ($type === 'ezselection' && is_int($value)) {
@@ -448,11 +460,130 @@ class ContentObjectAttribute
                 }
             }
             $asString = true;
-        } else {
+        } else if ($type === 'ezurl') {
+            $fields = null;
+            if (isset($value['url'])) {
+                $url = $value['url'];
+                $fields = array($url);
+                if (isset($value['text'])) {
+                    $fields[] = $value['text'];
+                }
+            } else if ($value) {
+                $fields = array($value);
+            }
+            if ($fields) {
+                $value = implode("|", $fields);
+            } else {
+                $value = '';
+            }
             $asString = true;
+        } else if ($type === 'ezboolean' || $type === 'eztext' || $type === 'ezinteger' ||
+                   $type === 'ezfloat' || $type === 'ezemail' || $type === 'ezidentifier') {
+            if ($value === null) {
+                $value = '';
+            }
+            $asString = true;
+        } else if ($type === 'ezdate' || $type === 'ezdatetime') {
+            if ($value === null) {
+                $value = '';
+                $asString = true;
+            } else if (is_object($value) && $value instanceof \DateTime) {
+                if ($type === 'ezdate') {
+                    $value->setTime(0, 0, 0);
+                }
+                $value = $value->getTimestamp();
+            } else if (is_object($value) && $value instanceof \eZDate) {
+                $value = $value->timeStamp();
+            } else if (is_object($value) && $value instanceof \eZDateTime) {
+                if ($type === 'ezdate') {
+                    $value = $value->toDate();
+                }
+                $value = $value->timeStamp();
+            } else if (is_object($value) || is_array($value)) {
+                throw new TypeError("Value for ${type} must be a literal or a date object, cannot import value: " . var_export($value, true));
+            }
+            $asString = true;
+        } else if ($type === 'ezauthor') {
+            if ($value === null) {
+                $value = '';
+                $asString = true;
+            } if (is_object($value) && $value instanceof \eZAuthor) {
+                $asContent = true;
+            } else if (is_array($value)) {
+                $authors = new \eZAuthor();
+                foreach ($value as $author) {
+                    if (isset($author['name']) && isset($author['email'])) {
+                        $authors->addAuthor(Arr::get($author, 'id'), $author['name'], $author['email']);
+                    }
+                }
+                $value = $authors;
+                $asContent = true;
+            } else if (is_string($value)) {
+                $asString = true;
+            } else {
+                throw new TypeError("Value for ${type} must be eZAuthor object, array with author info or a formatted string, cannot import value: " . var_export($value, true));
+            }
+        } else if ($type === 'ezcountry') {
+            if (!$value) {
+                $value = '';
+                $asString = true;
+            } else if (is_array($value)) {
+                $identifiers = array();
+                foreach ($value as $country) {
+                    if (isset($country['Alpha2'])) {
+                        $identifiers[] = $country['Alpha2'];
+                    } else if (isset($country['identifier'])) {
+                        $identifiers[] = $countr['identifier'];
+                    } else {
+                        continue;
+                    }
+                }
+                $value = implode(",", $identifiers);
+                $asString = true;
+            } else if (is_string($value)) {
+                $asString = true;
+            } else {
+                throw new TypeError("Value for ${type} must be array of eZCountry objects, identifier or array with 'identifier' entry, cannot import value: " . var_export($value, true));
+            }
+        } else if ($type === 'ezkeyword') {
+            if ($value === null) {
+                $value = '';
+                $asString = true;
+            } else if (is_array($value)) {
+                $value = implode(",", $value);
+                $asString = true;
+            } else if (is_object($value) && $value instanceof \eZKeyword) {
+                $asContent = true;
+            } else {
+                throw new TypeError("Value for ${type} must be eZKeyword object, array of keyword identifier, cannot import value: " . var_export($value, true));
+            }
+        } else if ($type === 'ezprice') {
+            if (!$value) {
+                $value = '';
+                $asString = true;
+            } else if (is_array($value) && isset($value['amount'])) {
+                $amount = $value['amount'];
+                $isVatIncluded = true;
+                $vatId = null;
+                if (isset($value['is_vat_included'])) {
+                    $isVatIncluded = (bool)$value['is_vat_included'];
+                }
+                if (isset($value['vat']['id'])) {
+                    $vatId = $value['vat']['id'];
+                }
+                $value = implode("|", array($amount, (string)$vatId, (int)$isVatIncluded));
+                $asString = true;
+            } else if (is_string($value)) {
+                $asString = true;
+            } else {
+                throw new TypeError("Value for ${type} must be array with 'amount', 'is_vat_included' and 'vat', cannot import value: " . var_export($value, true));
+            }
         }
 
         if ($asString) {
+        if ($asContent) {
+            $attribute->setContent($value);
+        } else if ($asString) {
             $attribute->fromString($value);
         }
         $attribute->store();
