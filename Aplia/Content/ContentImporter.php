@@ -1346,7 +1346,10 @@ class ContentImporter
     public function processAttributeData($identifier, $dataType, $attributeData)
     {
         if ($dataType === 'ezimage') {
-            if (isset($attributeData['uuid'])) {
+            if (isset($attributeData['found']) && !$attributeData['found']) {
+                // Exporter did not find the image, so there is nothing to import
+                return null;
+            } else if (isset($attributeData['uuid'])) {
                 $uuid = $attributeData['uuid'];
                 if (!isset($this->fileIndex[$uuid])) {
                     throw new ImportDenied("ezbinaryfile attribute $identifier references file with UUID $uuid but it does not exist");
@@ -1364,6 +1367,10 @@ class ContentImporter
             }
         } else if ($dataType === 'ezbinaryfile') {
             if (isset($attributeData['uuid'])) {
+            if (isset($attributeData['found']) && !$attributeData['found']) {
+                // Exporter did not find the file, so there is nothing to import
+                return null;
+            } else if (isset($attributeData['uuid'])) {
                 $uuid = $attributeData['uuid'];
                 if (!isset($this->fileIndex[$uuid])) {
                     throw new ImportDenied("ezbinaryfile attribute $identifier references file with UUID $uuid but it does not exist");
