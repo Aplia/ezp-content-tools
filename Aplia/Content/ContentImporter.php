@@ -1359,17 +1359,23 @@ class ContentImporter
 
     /**
      * Create objects with empty data and their locations, this is just to
-     * get a node id.
+     * get an object id and node id.
      */
     public function createNodeStructure($nodeData)
     {
-        if ($nodeData['status'] === 'new') {
-            if ($this->verbose) {
-                echo "Creating node ", $nodeData['uuid'], "\n";
-            }
-            $nodeUuid = $nodeData['uuid'];
+        if (isset($this->objectIndex[$nodeData['object_uuid']])) {
             $objectData = $this->objectIndex[$nodeData['object_uuid']];
+            $objectName = Arr::get($objectData, 'main_name', "<no-name>");
             $objectUuid = $objectData['uuid'];
+        } else {
+            $objectName = "<no-name2>";
+            $objectUuid = null;
+        }
+        if ($nodeData['status'] === 'new') {
+            $nodeUuid = $nodeData['uuid'];
+            if ($this->verbose) {
+                echo "Creating node skeleton ", $nodeData['uuid'], ", name='", $objectName, "'\n";
+            }
             $translations = $objectData['translations'];
             $languages = array_keys($translations);
             if (!$languages) {
@@ -1450,7 +1456,7 @@ class ContentImporter
                 $contentObject = $objectManager->contentObject;
                 $this->objectIndex[$objectUuid]['id'] = $contentObject->attribute('id');
                 if ($this->verbose) {
-                    echo "Created object id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), "\n";
+                    echo "Created object skeleton: id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), ", name='", $objectName, "'\n";
                 }
             }
             $nodes = $objectManager->nodes;
@@ -1467,15 +1473,15 @@ class ContentImporter
             unset($this->newObjectQueue[$objectUuid]);
         } else if ($nodeData['status'] === 'created') {
             if ($this->verbose) {
-                echo "Node ", $nodeData['node_id'], " has already been created\n";
+                echo "Node ${nodeData['node_id']}, name=${objectName} has already been created\n";
             }
         } else if ($nodeData['status'] === 'present') {
             if ($this->verbose) {
-                echo "Node ", $nodeData['uuid'], " already exists\n";
+                echo "Node ${nodeData['uuid']}, name=${objectName} already exists\n";
             }
         } else if ($nodeData['status'] === 'reference') {
             if ($this->verbose) {
-                echo "Node ", $nodeData['uuid'], " is a reference\n";
+                echo "Node ${nodeData['uuid']}, name=${objectName} is a reference\n";
             }
         } else {
             throw new ImportDenied("Reached node with unknown status='" . $nodeData['status'] . "'");
