@@ -571,6 +571,9 @@ class ContentObjectAttribute
      */
     public function updateImageType(ContentObject $object, \eZContentObjectAttribute $attribute, $value)
     {
+        if ($value === null) {
+            return;
+        }
         if (is_array($value)) {
             if (isset($value['path'])) {
                 $value = new ImageFile(
@@ -649,6 +652,9 @@ class ContentObjectAttribute
      */
     public function updateBinaryFileType(ContentObject $object, \eZContentObjectAttribute $attribute, $value)
     {
+        if ($value === null) {
+            return;
+        }
         if (is_array($value)) {
             if (isset($value['path'])) {
                 $value = new ImageFile(
@@ -706,6 +712,10 @@ class ContentObjectAttribute
      */
     public function updateXmlTextType($attribute, $value, $object)
     {
+        if ($value === null) {
+            return;
+        }
+
         // Array support, must contain an 'xml' entry
         if (is_array($value) && isset($value['xml'])) {
             $value = new RawXmlText($value['xml']);
