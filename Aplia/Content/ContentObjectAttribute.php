@@ -345,7 +345,7 @@ class ContentObjectAttribute
         } else if ($type === 'ezobjectrelation') {
             if (is_array($value)) {
                 if (isset($value['object_uuid'])) {
-                    $object = eZContentObject::fetchByRemoteID($value['object_uuid']);
+                    $object = \eZContentObject::fetchByRemoteID($value['object_uuid']);
                     if (!$object) {
                         throw new ValueError("Cannot set ezobjectrelation content, object with UUID '" . $value['object_uuid'] . "' does not exists");
                     }
@@ -353,9 +353,9 @@ class ContentObjectAttribute
                 } else {
                     $value = null;
                 }
-            } else if ($value instanceof eZContentObject) {
+            } else if ($value instanceof \eZContentObject) {
                 $value = $object->attribute('id');
-            } else if ($value instanceof eZContentObjectTreeNode) {
+            } else if ($value instanceof \eZContentObjectTreeNode) {
                 $value = $object->attribute('contentobject_id');
             } else if ($value === null) {
             } else {
@@ -368,21 +368,21 @@ class ContentObjectAttribute
                 foreach ($value as $objectData) {
                     if (is_array($objectData)) {
                         if (isset($objectData['object_uuid'])) {
-                            $object = eZContentObject::fetchByRemoteID($objectData['object_uuid']);
+                            $object = \eZContentObject::fetchByRemoteID($objectData['object_uuid']);
                             if (!$object) {
                                 throw new ValueError("Cannot set ezobjectrelation content, object with UUID '" . $objectData['object_uuid'] . "' does not exists");
                             }
                             $objectIds[] = $object->attribute('id');
                         } else if (isset($objectData['object_id'])) {
-                            $object = eZContentObject::fetch($objectData['object_id']);
+                            $object = \eZContentObject::fetch($objectData['object_id']);
                             if (!$object) {
                                 throw new ValueError("Cannot set ezobjectrelation content, object with id '" . $objectData['object_id'] . "' does not exists");
                             }
                             $objectIds[] = $object->attribute('id');
                         }
-                    } else if ($objectData instanceof eZContentObject) {
+                    } else if ($objectData instanceof \eZContentObject) {
                         $objectIds[] = $object->attribute('id');
-                    } else if ($objectData instanceof eZContentObjectTreeNode) {
+                    } else if ($objectData instanceof \eZContentObjectTreeNode) {
                         $objectIds[] = $object->attribute('contentobject_id');
                     } else if ($objectData === null) {
                         continue;
@@ -390,9 +390,9 @@ class ContentObjectAttribute
                         throw new TypeError("Unsupported value for ezobjectrelation attribute '" . $attribute->attribute('identifier') . "', value=" . var_export($objectData, true));
                     }
                 }
-            } else if ($value instanceof eZContentObject) {
+            } else if ($value instanceof \eZContentObject) {
                 $objectIds[] = $object->attribute('id');
-            } else if ($value instanceof eZContentObjectTreeNode) {
+            } else if ($value instanceof \eZContentObjectTreeNode) {
                 $objectIds[] = $object->attribute('contentobject_id');
             } else if ($value === null) {
             } else {
@@ -735,10 +735,10 @@ class ContentObjectAttribute
             if ($value->relatedObjects || $value->linkedObjects) {
                 $contentObject = $attribute->attribute('object');
                 if ($value->relatedObjects) {
-                    $contentObject->appendInputRelationList($value->relatedObjects, eZContentObject::RELATION_EMBED);
+                    $contentObject->appendInputRelationList($value->relatedObjects, \eZContentObject::RELATION_EMBED);
                 }
                 if ($value->linkedObjects) {
-                    $contentObject->appendInputRelationList($value->linkedObjects, eZContentObject::RELATION_LINK);
+                    $contentObject->appendInputRelationList($value->linkedObjects, \eZContentObject::RELATION_LINK);
                 }
             }
 
