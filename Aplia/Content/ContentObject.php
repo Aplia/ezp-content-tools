@@ -501,6 +501,9 @@ class ContentObject
                 $location['parent_id'] = $location['parent_node']->attribute('node_id');
             } else if (isset($location['parent_uuid'])) {
                 $parentNode = eZContentObjectTreeNode::fetchByRemoteID($location['parent_uuid']);
+                if (!$parentNode) {
+                    throw new ValueError("Location has parent_uuid=" . $location['parent_uuid'] . " but the node does not exist");
+                }
                 $location['parent_id'] = $parentNode->attribute('node_id');
                 $location['parent_node'] = $parentNode;
             } 
