@@ -298,6 +298,7 @@ class ContentObjectAttribute
         }
 
         $type = $attribute->attribute('data_type_string');
+        $dataType = $attribute->dataType();
         $value = $this->value;
 
         $asString = false;
@@ -341,6 +342,112 @@ class ContentObjectAttribute
             } else if ($value) {
                 throw new TypeError("Value passed to ezuser attribute '" . $attribute->attribute('identifier') . "' is not supported: " . var_export($value, true));
             }
+        } else if ($type === 'ezobjectrelation') {
+            if (is_array($value)) {
+                if (isset($value['object_uuid'])) {
+                    $object = eZContentObject::fetchByRemoteID($value['object_uuid']);
+                    if (!$object) {
+                        throw new ValueError("Cannot set ezobjectrelation content, object with UUID '" . $value['object_uuid'] . "' does not exists");
+                    }
+                    $value = $object->attribute('id');
+                } else {
+                    $value = null;
+                }
+            } else if ($value instanceof eZContentObject) {
+                $value = $object->attribute('id');
+            } else if ($value instanceof eZContentObjectTreeNode) {
+                $value = $object->attribute('contentobject_id');
+            } else if ($value === null) {
+            } else {
+                throw new TypeError("Unsupported value for ezobjectrelation attribute '" . $attribute->attribute('identifier') . "', value=" . var_export($value, true));
+            }
+            $asString = true;
+        } else if ($type === 'ezobjectrelationlist') {
+            $objectIds = array();
+            if (is_array($value)) {
+                foreach ($value as $objectData) {
+                    if (is_array($objectData)) {
+                        if (isset($objectData['object_uuid'])) {
+                            $object = eZContentObject::fetchByRemoteID($objectData['object_uuid']);
+                            if (!$object) {
+                                throw new ValueError("Cannot set ezobjectrelation content, object with UUID '" . $objectData['object_uuid'] . "' does not exists");
+                            }
+                            $objectIds[] = $object->attribute('id');
+                        } else if (isset($objectData['object_id'])) {
+                            $object = eZContentObject::fetch($objectData['object_id']);
+                            if (!$object) {
+                                throw new ValueError("Cannot set ezobjectrelation content, object with id '" . $objectData['object_id'] . "' does not exists");
+                            }
+                            $objectIds[] = $object->attribute('id');
+                        }
+                    } else if ($objectData instanceof eZContentObject) {
+                        $objectIds[] = $object->attribute('id');
+                    } else if ($objectData instanceof eZContentObjectTreeNode) {
+                        $objectIds[] = $object->attribute('contentobject_id');
+                    } else if ($objectData === null) {
+                        continue;
+                    } else {
+                        throw new TypeError("Unsupported value for ezobjectrelation attribute '" . $attribute->attribute('identifier') . "', value=" . var_export($objectData, true));
+                    }
+                }
+            } else if ($value instanceof eZContentObject) {
+                $objectIds[] = $object->attribute('id');
+            } else if ($value instanceof eZContentObjectTreeNode) {
+                $objectIds[] = $object->attribute('contentobject_id');
+            } else if ($value === null) {
+            } else {
+                throw new TypeError("Unsupported value for ezobjectrelation attribute '" . $attribute->attribute('identifier') . "', value=" . var_export($value, true));
+            }
+            $value = implode("-", $objectIds);
+            $asString = true;
+        } else if ($type === 'ezselection') {
+            if (is_array($value)) {
+                if (isset($value['selection'])) {
+                    $selection = $value['selection'];
+                } else {
+                    $selection = $value;
+                }
+                if ($selection) {
+                    $classContent = $dataType->classAttributeContent($attribute->attribute('contentclass_attribute'));
+                    $optionArray = $classContent['options'];
+                    $optionNames = array();
+                    $optionIds = array();
+                    foreach ($optionArray as $option) {
+                        $optionNames[] = $option['name'];
+                        $optionIds[] = $option['id'];
+                    }
+                    foreach ($selection as $idx => $selectId) {
+                        if (is_numeric($selectId)) {
+                            $found = false;
+                            foreach ($optionArray as $option) {
+                                if ($option['id'] == $selectId) {
+                                    $selection[$idx] = $option['name'];
+                                    $found = true;
+                                    break;
+                                }
+                            }
+                            if (!$found) {
+                                throw new ValueError("Selection '$selectId' at index $idx does not match any of the option identifiers: " . implode(", ", $optionNames));
+                            }
+                        } else {
+                            $found = false;
+                            foreach ($optionArray as $option) {
+                                if ($option['name'] == $selectId) {
+                                    $found = true;
+                                    break;
+                                }
+                            }
+                            if (!$found) {
+                                throw new ValueError("Selection '$selectId' at index $idx does not match any of the option names: " . implode(", ", $optionNames));
+                            }
+                        }
+                    }
+                    $value = implode("|", $selection);
+                } else {
+                    $value = '';
+                }
+            }
+            $asString = true;
         } else {
             $asString = true;
         }
