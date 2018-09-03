@@ -1044,7 +1044,26 @@ class ContentImporter
             $this->addExistingNode($node, $nodeUuid, $children);
         }
 
-        // TODO: Find remaining missing parents and reassign to start node
+        // Check if there are still missing parent nodes
+        if ($this->nodeMissingIndex) {
+            echo "There are still missing " . count($this->nodeMissingIndex) . " parent nodes\n";
+            if ($this->promptYesOrNo("Do you wish to reassign them to start node? [yes/no] ") === 'yes') {
+                $startNodeUuid = $this->startNode->remoteID();
+                $startNodeId = $this->startNode->attribute('node_id');
+                foreach ($this->nodeMissingIndex as $nodeUuid => $children) {
+                    $this->nodeIndex[$startNodeUuid]['children'] = array_merge($this->nodeIndex[$startNodeUuid]['children'], $children);
+                    foreach ($children as $childNodeUuid) {
+                        $this->nodeIndex[$childNodeUuid]['parent_uuid'] = $startNodeUuid;
+                    }
+                    unset($this->nodeMissingIndex[$nodeUuid]);
+                    if ($this->verbose) {
+                        echo "Reassigned parent node $nodeUuid to $startNodeUuid (" . $startNodeId . ")\n";
+                    }
+                }
+            } else {
+                throw new ImportDenied("Parent nodes missing, aborting import");
+            }
+        }
 
         if ($this->verbose) {
             echo "Creating node structure\n";
