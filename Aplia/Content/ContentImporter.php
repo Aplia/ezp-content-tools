@@ -1289,7 +1289,7 @@ class ContentImporter
                     $failed = false;
                     if ($this->interactive) {
                         echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist in import nor in DB\n";
-                        if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no]") !== 'yes') {
+                        if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no] ") !== 'yes') {
                             $failed = true;
                         } else {
                             return array(
@@ -1332,7 +1332,7 @@ class ContentImporter
                     $failed = false;
                     if ($this->interactive) {
                         echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist\n";
-                        if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no]") !== 'yes') {
+                        if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no] ") !== 'yes') {
                             $failed = true;
                         } else {
                             $isChanged = true;
