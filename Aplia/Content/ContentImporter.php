@@ -1266,9 +1266,7 @@ class ContentImporter
             foreach ($objectData['attributes'] as $identifier => $attributeData) {
                 $dataType = $classData['attributes'][$identifier];
                 $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
-                $objectManager->setAttribute($identifier, array(
-                    'content' => $attributeData,
-                ));
+                $objectManager->setAttribute($identifier, $attributeData);
             }
         }
         if (isset($translations[$mainLanguage]['attributes']) &&
@@ -1276,9 +1274,7 @@ class ContentImporter
             foreach ($translations[$mainLanguage]['attributes'] as $identifier => $attributeData) {
                 $dataType = $classData['attributes'][$identifier];
                 $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
-                $objectManager->setAttribute($identifier, array(
-                    'content' => $attributeData,
-                ));
+                $objectManager->setAttribute($identifier, $attributeData);
             }
         }
         $mainUuid = null;
@@ -1312,9 +1308,7 @@ class ContentImporter
                 'language' => $language,
             ));
             foreach ($translations[$language]['attributes'] as $identifier => $attributeData) {
-                $objectLanguageManager->setAttribute($identifier, array(
-                    'content' => $attributeData,
-                ));
+                $objectLanguageManager->setAttribute($identifier, $attributeData);
             }
             // Include locations to get all url aliases updated
             foreach ($objectData['locations'] as $locationData) {
@@ -1366,7 +1360,6 @@ class ContentImporter
                 return null;
             }
         } else if ($dataType === 'ezbinaryfile') {
-            if (isset($attributeData['uuid'])) {
             if (isset($attributeData['found']) && !$attributeData['found']) {
                 // Exporter did not find the file, so there is nothing to import
                 return null;
