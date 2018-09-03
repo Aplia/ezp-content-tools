@@ -1264,7 +1264,7 @@ class ContentImporter
         $classData = $this->classIndex[$objectData['class_identifier']];
         if (isset($objectData['attributes']) && $objectData['attributes']) {
             foreach ($objectData['attributes'] as $identifier => $attributeData) {
-                $dataType = $classData['attributes'][$identifier];
+                $dataType = $classData['attributes'][$identifier]['type'];
                 $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
                 $objectManager->setAttribute($identifier, $attributeData);
             }
@@ -1272,7 +1272,7 @@ class ContentImporter
         if (isset($translations[$mainLanguage]['attributes']) &&
             $translations[$mainLanguage]['attributes']) {
             foreach ($translations[$mainLanguage]['attributes'] as $identifier => $attributeData) {
-                $dataType = $classData['attributes'][$identifier];
+                $dataType = $classData['attributes'][$identifier]['type'];
                 $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
                 $objectManager->setAttribute($identifier, $attributeData);
             }
