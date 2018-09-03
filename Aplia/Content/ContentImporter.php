@@ -1665,6 +1665,68 @@ class ContentImporter
                 // No uuid so nothing to import
                 return null;
             }
+        } else if ($dataType === 'ezobjectrelation') {
+            if (isset($attributeData['object_uuid'])) {
+                $objectUuid = $attributeData['object_uuid'];
+                $objectId = Arr::get($attributeData, 'object_id');
+                $objectName = Arr::get($attributeData, 'name', '<unknown-name>');
+                $object = eZContentObject::fetchByRemoteID($objectUuid);
+                if (!$object) {
+                    $failed = false;
+                    if ($this->interactive) {
+                        echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist\n";
+                        if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no]") !== 'yes') {
+                            $failed = true;
+                        } else {
+                            return null;
+                        }
+                    } else {
+                        $failed = true;
+                    }
+                    if ($failed) {
+                        throw new ImportDenied("Failed to find object relation for attribute $identifier, the object with UUID $objectUuid (ID=$objectId, name=$objectName) does not exist");
+                    }
+                }
+                return $attributeData;
+            }
+        } else if ($dataType === 'ezobjectrelationlist') {
+            if (isset($attributeData['relations'])) {
+                $relations = $attributeData['relations'];
+            } else {
+                $relations = $attributeData;
+            }
+            $newRelations = array();
+            foreach ($relations as $relationData) {
+                if (!isset($relationData['object_uuid'])) {
+                    continue;
+                }
+                $objectUuid = $relationData['object_uuid'];
+                $objectId = Arr::get($relationData, 'object_id');
+                $objectName = Arr::get($relationData, 'name', '<unknown-name>');
+                $object = eZContentObject::fetchByRemoteID($objectUuid);
+                if (!$object) {
+                    $failed = false;
+                    if ($this->interactive) {
+                        echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist\n";
+                        if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no]") !== 'yes') {
+                            $failed = true;
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        $failed = true;
+                    }
+                    if ($failed) {
+                        throw new ImportDenied("Failed to find object relation for attribute $identifier, the object with UUID $objectUuid (ID=$objectId, name=$objectName) does not exist");
+                    }
+                }
+                $newRelations[] = array(
+                    'object_uuid' => $relationData['object_uuid'],
+                    'object_id' => $object->attribute('id'),
+                    'name' => $objectName,
+                );
+            }
+            return $newRelations;
         }
         return $attributeData;
     }
