@@ -399,6 +399,8 @@ class ContentImporter
         $uuid = $fileData['uuid'];
         $isTemporary = false;
         $originalPath = isset($fileData['original_path']) ? $fileData['original_path'] : null;
+        $fileSize = Arr::get($fileData, 'size');
+        $fileSizeText = $fileSize === null ? 'unknown size' : "${fileSize} bytes";
         $md5 = isset($fileData['md5']) ? $fileData['md5'] : null;
         $originalFilename = $originalPath ? basename($originalPath) : null;
         if (isset($fileData['content_b64'])) {
@@ -421,9 +423,9 @@ class ContentImporter
                 $filePath = $filePath . substr($originalPath, $pos);
             }
             if ($this->verbose) {
-                echo "Importing file ${originalFilename}";
+                echo "Importing file ${originalFilename}, ${fileSizeText}";
                 if ($md5) {
-                    echo " md5=${md5}";
+                    echo ", md5=${md5}";
                 }
                 echo "\n";
             }
@@ -436,9 +438,9 @@ class ContentImporter
             }
             $filePath = $fileData['path'];
             if ($this->verbose) {
-                echo "Using stored file for ${originalFilename}";
+                echo "Using stored file for ${originalFilename}, ${fileSizeText}";
                 if ($md5) {
-                    echo " md5=${md5}";
+                    echo ", md5=${md5}";
                 }
                 echo "\n";
             }
