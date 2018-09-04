@@ -1699,7 +1699,7 @@ class ContentImporter
                     throw new ImportDenied("ezbinaryfile attribute $identifier references file with UUID $uuid but it does not exist");
                 }
                 $file = $this->fileIndex[$uuid];
-                $filePath = $file['file_path'];
+                $filePath = $file['path'];
                 return new ImageFile(array(
                     'alternative_text' => Arr::get($attributeData, 'alternative_text'),
                     'original_filename' => Arr::get($attributeData, 'original_filename'),
@@ -1719,7 +1719,7 @@ class ContentImporter
                     throw new ImportDenied("ezbinaryfile attribute $identifier references file with UUID $uuid but it does not exist");
                 }
                 $file = $this->fileIndex[$uuid];
-                $filePath = $file['file_path'];
+                $filePath = $file['path'];
                 return new BinaryFile(array(
                     'original_filename' => Arr::get($attributeData, 'original_filename'),
                     'path' => $filePath,
