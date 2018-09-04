@@ -1227,25 +1227,33 @@ class ContentImporter
             }
             if (!$removeOwner) {
                 $ownerName = Arr::get($objectData['owner'], 'name', '<unknown-owner>');
-                $owner = eZContentObject::fetchByRemoteID($ownerUuid, false);
-                if (!$owner && $this->interactive) {
+                $owner = null;
+                $foundOwner = false;
+                if (isset($this->objectIndex[$ownerUuid])) {
+                    // Owner will be imported
+                    $foundOwner = true;
+                } else {
+                    $owner = eZContentObject::fetchByRemoteID($ownerUuid, false);
+                    $foundOwner = (bool)$owner;
+                }
+                if (!$foundOwner && $this->interactive) {
                     echo "Object UUID ${objectUuid} (name=${objectName}) has owner UUID ${ownerUuid} (name=${ownerName}), but owner object was not found\n";
                     if ($this->promptYesOrNo("Do you wish to reset ownership for this owner? [yes/no] ") === 'yes') {
                         $removeOwner = true;
                     } else {
                         throw new ImportDenied("Object UUID ${objectUuid} has owner UUID ${ownerUuid} (name=${ownerName}), but owner object was not found");
                     }
+                } else if (!$foundOwner) {
+                    $removeOwner = true;
                 }
-                if ($removeOwner) {
-                    $this->objectIndex[$objectUuid]['owner'] = null;
-                    // Mark the object uuid as removed, any future entries with the same owner
-                    // will automatically remove it
-                    $this->objectRemapped[$ownerUuid] = array(
-                        'removed' => true,
-                    );
-                } else if ($owner) {
-                    $ownerUuid = $ownerUuid;
-                }
+            } 
+            if ($removeOwner) {
+                $this->objectIndex[$objectUuid]['owner'] = null;
+                // Mark the object uuid as removed, any future entries with the same owner
+                // will automatically remove it
+                $this->objectRemapped[$ownerUuid] = array(
+                    'removed' => true,
+                );
             }
         }
         // Verify all attributes
