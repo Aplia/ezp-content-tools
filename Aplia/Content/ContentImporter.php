@@ -399,6 +399,8 @@ class ContentImporter
         $uuid = $fileData['uuid'];
         $isTemporary = false;
         $originalPath = isset($fileData['original_path']) ? $fileData['original_path'] : null;
+        $md5 = isset($fileData['md5']) ? $fileData['md5'] : null;
+        $originalFilename = $originalPath ? basename($originalPath) : null;
         if (isset($fileData['content_b64'])) {
             if ($this->fileStorage === null) {
                 $fileStorage = null;
@@ -418,6 +420,13 @@ class ContentImporter
             if ($originalPath && ($pos = strrpos($originalPath, "."))) {
                 $filePath = $filePath . substr($originalPath, $pos);
             }
+            if ($this->verbose) {
+                echo "Importing file ${originalFilename}";
+                if ($md5) {
+                    echo " md5=${md5}";
+                }
+                echo "\n";
+            }
             file_put_contents($filePath, base64_decode($fileData['content_b64'], true));
             $isTemporary = true;
             unset($fileData['content_b64']);
@@ -426,12 +435,19 @@ class ContentImporter
                 throw new TypeError("File record has neither 'path' nor 'content_b64' set, cannot import");
             }
             $filePath = $fileData['path'];
+            if ($this->verbose) {
+                echo "Using stored file for ${originalFilename}";
+                if ($md5) {
+                    echo " md5=${md5}";
+                }
+                echo "\n";
+            }
         }
         $this->fileIndex[$uuid] = array(
             'uuid' => $uuid,
             'status' => 'new',
             'path' => $filePath,
-            'md5' => isset($fileData['md5']) ? $fileData['md5'] : null,
+            'md5' => $md5,
             'original_path' => $originalPath,
             'has_temp_file' => $isTemporary,
         );
