@@ -286,10 +286,12 @@ class ContentExporter
     {
         $file = \eZFileHandler::instance(false);
         if ($file->isFile($path)) {
+            $fileSize = is_file($path) ? filesize($path) : null;
             $this->fileMap[$uuid] = array(
                 '__type__' => 'file',
                 'uuid' => $uuid,
                 'original_path' => $path,
+                'size' => $fileSize,
             );
             if ($this->embedFileData) {
                 $file->open($path, "r");
