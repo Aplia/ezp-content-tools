@@ -403,6 +403,7 @@ EOT;
                         if (isset($contentNode['parent_node_uuid'])) {
                             $locationData = var_export(array(
                                 'parent_uuid' => $contentNode['parent_node_uuid'],
+                                'parent_root_type' => \Aplia\Content\ContentObject::mapNodeToTreeIdentifier($contentNode['parent_node_id']),
                                 'uuid' => $contentNode['uuid'],
                             ), true);
                             echo "->addLocation($locationData)\n"; 
