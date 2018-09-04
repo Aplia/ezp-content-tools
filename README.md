@@ -379,6 +379,50 @@ then the image file will be available in the file entry `portrait_image`.
 $object->setAttribute('image', new Aplia\Content\HttpFile('portrait_image'));
 ```
 
+## Content input handler
+
+Content-tools supports extending support for 3rd-party data-types
+by defining input handlers. The input handlers has the responsibility
+to take the input value and store it on the attribute in whatever
+manner makes sense. It may also transform the input value to
+the format that the data-type expects.
+
+The handler is a class that implements the ContentInputHandler interface
+and must be defined in `content.ini` under `DataTypeSettings`
+and the variable `ContentInputHandler`.
+For instance lets say we want to support `ezselection` then add
+
+```
+[DataTypeSettings]
+ContentInputHandler[ezselection2]=class;Selection2Handler
+```
+
+The handler must then implement the `storeContent` method and
+store the value on the attribute or in the database. A simple
+example follows:
+
+```
+class Selection2Handler extends ContentBaseHandler implements ContentInputHandler
+{
+    public function storeContent($value)
+    {
+        $this->attribute->setAttribute('data_int', $value);
+    }
+}
+```
+
+If the input value is simply text, integer, float or a string-like
+input then swap out `class` for the corresponding types `text`, `int`, `float` and
+`string`. To ignore the input value use type `ignore`.
+`string` means to pass the value to the `fromString` method on
+the data-type.
+
+```
+[DataTypeSettings]
+ContentInputHandler[ezselection2]=string
+```
+
+
 ## Migration
 
 This package has support for the Phinx system for migrations of database

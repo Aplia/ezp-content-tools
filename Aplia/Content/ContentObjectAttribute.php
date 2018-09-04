@@ -22,6 +22,9 @@ class ContentObjectAttribute
     public $language;
     public $isDirty;
 
+    protected $_contentIni;
+    protected $_contentInputHandler;
+
     public function __construct($identifier, $value, $fields = null)
     {
         $this->identifier = $identifier;
@@ -578,6 +581,46 @@ class ContentObjectAttribute
             } else {
                 throw new TypeError("Value for ${type} must be array with 'amount', 'is_vat_included' and 'vat', cannot import value: " . var_export($value, true));
             }
+        } else {
+            // Detect input handler for content
+            $contentInputHandler = $this->contentInputHandler;
+            $hasHandler = false;
+            if (isset($contentInputHandler[$type])) {
+                $handlerData = explode(";", $contentInputHandler[$type]);
+                $handlerType = $handlerData[0];
+                $hasHandler = true;
+                if ($handlerType === 'string') {
+                    $asString = true;
+                } else if ($handlerType === 'text') {
+                    $attribute->setAttribute('data_text', $value);
+                } else if ($handlerType === 'int') {
+                    $attribute->setAttribute('data_int', $value);
+                } else if ($handlerType === 'float') {
+                    $attribute->setAttribute('data_float', $value);
+                } else if ($handlerType === 'ignore') {
+                    $this->isDirty = false;
+                    return;
+                } else if ($handlerType === 'class') {
+                    if (!isset($handlerData[1])) {
+                        throw new ImproperlyConfigured("Input handler for $type is 'class' but no class was defined");
+                    }
+                    $handlerClass = $handlerData[1];
+                    $handler = new $handlerClass($object, $attribute, $type, $handlerData);
+                    // Let the handler store the content, string import is no longer possible
+                    $handler->storeContent($value);
+                } else {
+                    throw new TypeError("Unsupported input handler type '$handlerType'");
+                }
+            }
+
+            // No handler, try automatic detection by value type
+            if (!$hasHandler) {
+                if (!is_array($value) && !is_object($value)) {
+                    $asString = true;
+                } else {
+                    throw new TypeError("Data-type '$type' is not known and the value is not a literal (string, int), cannot import value");
+                }
+            }
         }
 
         if ($asString) {
@@ -935,5 +978,32 @@ class ContentObjectAttribute
             'relatedObjects' => $parser->getRelatedObjectIDArray(),
             'linkedObjects' => $parser->getLinkedObjectIDArray(),
         ));
+    }
+
+    public function __exists($name)
+    {
+        return $name === 'contentIni' || $name === 'contentInputHandler';
+    }
+
+    public function __get($name)
+    {
+        if ($name === 'contentIni') {
+            if ($this->_contentIni === null) {
+                $this->_contentIni = \eZINI::instance('content.ini');
+            }
+            return $this->_contentIni;
+        } else if ($name === 'contentInputHandler') {
+            if ($this->_contentInputHandler === null) {
+                $contentIni = $this->contentIni;
+                if ($contentIni->hasVariable('DataTypeSettings', 'ContentInputHandler')) {
+                    $this->_contentInputHandler = $contentIni->variable('DataTypeSettings', 'ContentInputHandler');
+                } else {
+                    $this->_contentInputHandler = array();
+                }
+            }
+            return $this->_contentInputHandler;
+        } else {
+            throw new AttributeError("Unknown attribute $name on ContentObjectAttribute instance");
+        }
     }
 }
