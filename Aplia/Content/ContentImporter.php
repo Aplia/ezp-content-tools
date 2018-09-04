@@ -44,6 +44,11 @@ class ContentImporter
     public $transformClass = array();
     // Maps content content-class identifier to a new data structure, for instance to use an existing content content-class
     public $mapClass = array();
+
+    // Maps an object UUID to a new object structure, the structure either has the
+    // object data for the replacement object, or has 'removed' => true to remove it.
+    // This is for ownership and relations.
+    public $objectRemapped = array();
     
     // property $sectionIndex = array();
     // property $languageIndex = array();
@@ -394,6 +399,8 @@ class ContentImporter
         $uuid = $fileData['uuid'];
         $isTemporary = false;
         $originalPath = isset($fileData['original_path']) ? $fileData['original_path'] : null;
+        $md5 = isset($fileData['md5']) ? $fileData['md5'] : null;
+        $originalFilename = $originalPath ? basename($originalPath) : null;
         if (isset($fileData['content_b64'])) {
             if ($this->fileStorage === null) {
                 $fileStorage = null;
@@ -413,6 +420,13 @@ class ContentImporter
             if ($originalPath && ($pos = strrpos($originalPath, "."))) {
                 $filePath = $filePath . substr($originalPath, $pos);
             }
+            if ($this->verbose) {
+                echo "Importing file ${originalFilename}";
+                if ($md5) {
+                    echo " md5=${md5}";
+                }
+                echo "\n";
+            }
             file_put_contents($filePath, base64_decode($fileData['content_b64'], true));
             $isTemporary = true;
             unset($fileData['content_b64']);
@@ -421,12 +435,19 @@ class ContentImporter
                 throw new TypeError("File record has neither 'path' nor 'content_b64' set, cannot import");
             }
             $filePath = $fileData['path'];
+            if ($this->verbose) {
+                echo "Using stored file for ${originalFilename}";
+                if ($md5) {
+                    echo " md5=${md5}";
+                }
+                echo "\n";
+            }
         }
         $this->fileIndex[$uuid] = array(
             'uuid' => $uuid,
             'status' => 'new',
             'path' => $filePath,
-            'md5' => isset($fileData['md5']) ? $fileData['md5'] : null,
+            'md5' => $md5,
             'original_path' => $originalPath,
             'has_temp_file' => $isTemporary,
         );
@@ -854,6 +875,12 @@ class ContentImporter
             // Locations is an array of uuid that point to the nodeIndex
             'locations' => array(),
         );
+        if ($this->objectIndex[$uuid]['translations']) {
+            $translations = array_keys($this->objectIndex[$uuid]['translations']);
+            $mainLanguage = array_shift($translations);
+            $this->objectIndex[$uuid]['main_language'] = $mainLanguage;
+            $this->objectIndex[$uuid]['main_name'] = $this->objectIndex[$uuid]['translations'][$mainLanguage]['name'];
+        }
         // Check if object already exists
         $contentObject = eZContentObject::fetchByRemoteID($uuid);
         if ($contentObject) {
@@ -1066,6 +1093,17 @@ class ContentImporter
         }
 
         if ($this->verbose) {
+            echo "Verifying content\n";
+        }
+        // Go over all nodes and objects and verify references, relations and other data
+        foreach ($this->nodeStartIndex as $nodeUuidList) {
+            foreach ($nodeUuidList as $nodeUuid) {
+                $nodeData = $this->nodeIndex[$nodeUuid];
+                $this->verifyNodeContent($nodeData);
+            }
+        }
+
+        if ($this->verbose) {
             echo "Creating node structure\n";
         }
         // Go over all starting nodes and starting building the tree structure
@@ -1090,18 +1128,270 @@ class ContentImporter
     }
 
     /**
+     * Verify the nodes and its object.
+     */
+    public function verifyNodeContent($nodeData)
+    {
+        if ($nodeData['status'] === 'new' || $nodeData['status'] === 'created') {
+            if ($this->verbose) {
+                echo "Updating node ", $nodeData['uuid'], "\n";
+            }
+            $objectData = $this->objectIndex[$nodeData['object_uuid']];
+            $this->verifyObjectContent($objectData);
+        } else if ($nodeData['status'] === 'present') {
+            if ($this->verbose) {
+                echo "Node ", $nodeData['uuid'], " already exists\n";
+            }
+        } else if ($nodeData['status'] === 'reference') {
+            if ($this->verbose) {
+                echo "Node ", $nodeData['uuid'], " is a reference\n";
+            }
+        } else {
+            throw new ImportDenied("Reached node with unknown status='" . $nodeData['status'] . "'");
+        }
+
+        // Create child nodes
+        foreach ($nodeData['children'] as $childUuid) {
+            $childData = $this->nodeIndex[$childUuid];
+            $this->verifyNodeContent($childData);
+        }
+    }
+
+    /**
+     * Verifies the object information.
+     */
+    public function verifyObjectContent($objectData)
+    {
+        $objectUuid = $objectData['uuid'];
+        $translations = $objectData['translations'];
+        $languages = array_keys($translations);
+        if (!$languages) {
+            throw new ImportDenied("No translations found on object with uuid=" . $objectUuid);
+        }
+        $mainLanguage = array_shift($languages);
+        if (isset($objectData['translations'][$mainLanguage]['name'])) {
+            $objectName = $objectData['translations'][$mainLanguage]['name'];
+        } else {
+            $objectName = '<unknown-name>';
+        }
+        $ownerUuid = null;
+        // Add owner if it exists in database
+        if (isset($objectData['owner']['uuid']) && $objectData['owner']['uuid']) {
+            $removeOwner = false;
+            $ownerUuid = $objectData['owner']['uuid'];
+            if (isset($this->objectRemapped[$ownerUuid])) {
+                if (isset($this->objectRemapped[$ownerUuid]['removed'])) {
+                    $this->objectIndex[$objectUuid]['owner'] = null;
+                    $removeOwner = true;
+                } else {
+                    $objectData['owner'] = $this->objectIndex[$objectUuid]['owner'] = array(
+                        'uuid' => $this->objectRemapped[$ownerUuid]['uuid'],
+                        'id' => Arr::get($this->objectRemapped[$ownerUuid], 'id'),
+                        'name' => Arr::get($this->objectRemapped[$ownerUuid], 'name'),
+                    );
+                    $ownerUuuid = $this->objectRemapped[$ownerUuid]['uuid'];
+                }
+            }
+            if (!$removeOwner) {
+                $ownerName = Arr::get($objectData['owner'], 'name', '<unknown-owner>');
+                $owner = eZContentObject::fetchByRemoteID($ownerUuid, false);
+                if (!$owner && $this->interactive) {
+                    echo "Object UUID ${objectUuid} (name=${objectName}) has owner UUID ${ownerUuid} (name=${ownerName}), but owner object was not found\n";
+                    if ($this->promptYesOrNo("Do you wish to reset ownership for this owner? [yes/no] ") === 'yes') {
+                        $removeOwner = true;
+                    } else {
+                        throw new ImportDenied("Object UUID ${objectUuid} has owner UUID ${ownerUuid} (name=${ownerName}), but owner object was not found");
+                    }
+                }
+                if ($removeOwner) {
+                    $this->objectIndex[$objectUuid]['owner'] = null;
+                    // Mark the object uuid as removed, any future entries with the same owner
+                    // will automatically remove it
+                    $this->objectRemapped[$ownerUuid] = array(
+                        'removed' => true,
+                    );
+                } else if ($owner) {
+                    $ownerUuid = $ownerUuid;
+                }
+            }
+        }
+        // Verify all attributes
+        $classData = $this->classIndex[$objectData['class_identifier']];
+        $isModified = false;
+        if (isset($objectData['attributes']) && $objectData['attributes']) {
+            foreach ($objectData['attributes'] as $identifier => $attributeData) {
+                $dataType = $classData['attributes'][$identifier]['type'];
+                // Verify attribute, and if it returns a new value used that for attribute data
+                $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
+                if (isset($attributeData['value'])) {
+                    $objectData['attributes'][$identifier] = $attributeData['value'];
+                    $isModified = true;
+                }
+            }
+        }
+        if ($isModified) {
+            $this->objectIndex[$objectUuid]['attributes'] = $objectData['attributes'];
+        }
+
+        // Verify all translated attributes
+        $isModified = false;
+        foreach ($languages as $language) {
+            if (isset($translations[$language]['attributes']) &&
+                $translations[$language]['attributes']) {
+                foreach ($translations[$language]['attributes'] as $identifier => $attributeData) {
+                    $dataType = $classData['attributes'][$identifier]['type'];
+                    // Verify attribute, and if it returns a new value used that for attribute data
+                    $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
+                    if (isset($attributeData['value'])) {
+                        $translations[$language]['attributes'][$identifier] = $attributeData['value'];
+                        $isModified = true;
+                    }
+                }
+            }
+        }
+        if ($isModified) {
+            $this->objectIndex[$objectUuid]['translations'] = $translations;
+        }
+
+        if ($this->verbose) {
+            echo "Verified object uuid=${objectUuid}\n";
+        }
+    }
+
+    /**
+     * Check data structure for attribute content and verify that it is valid.
+     * For instance by checking that referenced objects exists.
+     */
+    public function verifyAttributeData($identifier, $dataType, $attributeData)
+    {
+        var_dump($dataType, $attributeData);
+        if ($dataType === 'ezimage') {
+            if (isset($attributeData['found']) && !$attributeData['found']) {
+                // Exporter did not find the image, so there is nothing to import
+            } else if (isset($attributeData['uuid'])) {
+                $uuid = $attributeData['uuid'];
+                if (!isset($this->fileIndex[$uuid])) {
+                    throw new ImportDenied("ezbinaryfile attribute $identifier references file with UUID $uuid but it does not exist");
+                }
+            } else {
+                // No uuid so nothing to import
+            }
+            return;
+        } else if ($dataType === 'ezbinaryfile') {
+            if (isset($attributeData['found']) && !$attributeData['found']) {
+                // Exporter did not find the file, so there is nothing to import
+            } else if (isset($attributeData['uuid'])) {
+                $uuid = $attributeData['uuid'];
+                if (!isset($this->fileIndex[$uuid])) {
+                    throw new ImportDenied("ezbinaryfile attribute $identifier references file with UUID $uuid but it does not exist");
+                }
+            } else {
+                // No uuid so nothing to import
+            }
+            return;
+        } else if ($dataType === 'ezobjectrelation') {
+            if (isset($attributeData['object_uuid'])) {
+                $objectUuid = $attributeData['object_uuid'];
+                $objectId = Arr::get($attributeData, 'object_id');
+                $objectName = Arr::get($attributeData, 'name', '<unknown-name>');
+                $hasRelation = false;
+                if (isset($this->objectIndex[$objectUuid])) {
+                    $hasRelation = true;
+                } else {
+                    $object = eZContentObject::fetchByRemoteID($objectUuid);
+                    $hasRelation = (bool)$object;
+                }
+                if (!$hasRelation) {
+                    $failed = false;
+                    if ($this->interactive) {
+                        echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist in import nor in DB\n";
+                        if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no] ") !== 'yes') {
+                            $failed = true;
+                        } else {
+                            return array(
+                                'value' => null,
+                            );
+                        }
+                    } else {
+                        $failed = true;
+                    }
+                    if ($failed) {
+                        throw new ImportDenied("Failed to find object relation for attribute $identifier, the object with UUID $objectUuid (ID=$objectId, name=$objectName) does not exist");
+                    }
+                }
+            }
+            return;
+        } else if ($dataType === 'ezobjectrelationlist') {
+            if (isset($attributeData['relations'])) {
+                $relations = $attributeData['relations'];
+            } else {
+                $relations = $attributeData;
+            }
+            $newRelations = array();
+            $isChanged = false;
+            foreach ($relations as $relationData) {
+                if (!isset($relationData['object_uuid'])) {
+                    $isChanged = true;
+                    continue;
+                }
+                $objectUuid = $relationData['object_uuid'];
+                $objectId = Arr::get($relationData, 'object_id');
+                $objectName = Arr::get($relationData, 'name', '<unknown-name>');
+                $hasRelation = false;
+                if (isset($this->objectIndex[$objectUuid])) {
+                    $hasRelation = true;
+                } else {
+                    $object = eZContentObject::fetchByRemoteID($objectUuid);
+                    $hasRelation = (bool)$object;
+                }
+                if (!$hasRelation) {
+                    $failed = false;
+                    if ($this->interactive) {
+                        echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist\n";
+                        if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no] ") !== 'yes') {
+                            $failed = true;
+                        } else {
+                            $isChanged = true;
+                            continue;
+                        }
+                    } else {
+                        $failed = true;
+                    }
+                    if ($failed) {
+                        throw new ImportDenied("Failed to find object relation for attribute $identifier, the object with UUID $objectUuid (ID=$objectId, name=$objectName) does not exist");
+                    }
+                }
+                $newRelations[] = $relationData;
+            }
+            if ($isChanged) {
+                return array(
+                    'value' => $newRelations,
+                );
+            }
+            return;
+        }
+        return;
+    }
+
+    /**
      * Create objects with empty data and their locations, this is just to
-     * get a node id.
+     * get an object id and node id.
      */
     public function createNodeStructure($nodeData)
     {
-        if ($nodeData['status'] === 'new') {
-            if ($this->verbose) {
-                echo "Creating node ", $nodeData['uuid'], "\n";
-            }
-            $nodeUuid = $nodeData['uuid'];
+        if (isset($this->objectIndex[$nodeData['object_uuid']])) {
             $objectData = $this->objectIndex[$nodeData['object_uuid']];
+            $objectName = Arr::get($objectData, 'main_name', "<no-name>");
             $objectUuid = $objectData['uuid'];
+        } else {
+            $objectName = "<no-name2>";
+            $objectUuid = null;
+        }
+        if ($nodeData['status'] === 'new') {
+            $nodeUuid = $nodeData['uuid'];
+            if ($this->verbose) {
+                echo "Creating node skeleton ", $nodeData['uuid'], ", name='", $objectName, "'\n";
+            }
             $translations = $objectData['translations'];
             $languages = array_keys($translations);
             if (!$languages) {
@@ -1182,7 +1472,7 @@ class ContentImporter
                 $contentObject = $objectManager->contentObject;
                 $this->objectIndex[$objectUuid]['id'] = $contentObject->attribute('id');
                 if ($this->verbose) {
-                    echo "Created object id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), "\n";
+                    echo "Created object skeleton: id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), ", name='", $objectName, "'\n";
                 }
             }
             $nodes = $objectManager->nodes;
@@ -1199,15 +1489,15 @@ class ContentImporter
             unset($this->newObjectQueue[$objectUuid]);
         } else if ($nodeData['status'] === 'created') {
             if ($this->verbose) {
-                echo "Node ", $nodeData['node_id'], " has already been created\n";
+                echo "Node ${nodeData['node_id']}, name=${objectName} has already been created\n";
             }
         } else if ($nodeData['status'] === 'present') {
             if ($this->verbose) {
-                echo "Node ", $nodeData['uuid'], " already exists\n";
+                echo "Node ${nodeData['uuid']}, name=${objectName} already exists\n";
             }
         } else if ($nodeData['status'] === 'reference') {
             if ($this->verbose) {
-                echo "Node ", $nodeData['uuid'], " is a reference\n";
+                echo "Node ${nodeData['uuid']}, name=${objectName} is a reference\n";
             }
         } else {
             throw new ImportDenied("Reached node with unknown status='" . $nodeData['status'] . "'");
@@ -1397,6 +1687,68 @@ class ContentImporter
                 // No uuid so nothing to import
                 return null;
             }
+        } else if ($dataType === 'ezobjectrelation') {
+            if (isset($attributeData['object_uuid'])) {
+                $objectUuid = $attributeData['object_uuid'];
+                $objectId = Arr::get($attributeData, 'object_id');
+                $objectName = Arr::get($attributeData, 'name', '<unknown-name>');
+                $object = eZContentObject::fetchByRemoteID($objectUuid);
+                if (!$object) {
+                    $failed = false;
+                    if ($this->interactive) {
+                        echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist\n";
+                        if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no] ") !== 'yes') {
+                            $failed = true;
+                        } else {
+                            return null;
+                        }
+                    } else {
+                        $failed = true;
+                    }
+                    if ($failed) {
+                        throw new ImportDenied("Failed to find object relation for attribute $identifier, the object with UUID $objectUuid (ID=$objectId, name=$objectName) does not exist");
+                    }
+                }
+                return $attributeData;
+            }
+        } else if ($dataType === 'ezobjectrelationlist') {
+            if (isset($attributeData['relations'])) {
+                $relations = $attributeData['relations'];
+            } else {
+                $relations = $attributeData;
+            }
+            $newRelations = array();
+            foreach ($relations as $relationData) {
+                if (!isset($relationData['object_uuid'])) {
+                    continue;
+                }
+                $objectUuid = $relationData['object_uuid'];
+                $objectId = Arr::get($relationData, 'object_id');
+                $objectName = Arr::get($relationData, 'name', '<unknown-name>');
+                $object = eZContentObject::fetchByRemoteID($objectUuid);
+                if (!$object) {
+                    $failed = false;
+                    if ($this->interactive) {
+                        echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist\n";
+                        if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no] ") !== 'yes') {
+                            $failed = true;
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        $failed = true;
+                    }
+                    if ($failed) {
+                        throw new ImportDenied("Failed to find object relation for attribute $identifier, the object with UUID $objectUuid (ID=$objectId, name=$objectName) does not exist");
+                    }
+                }
+                $newRelations[] = array(
+                    'object_uuid' => $relationData['object_uuid'],
+                    'object_id' => $object->attribute('id'),
+                    'name' => $objectName,
+                );
+            }
+            return $newRelations;
         }
         return $attributeData;
     }
