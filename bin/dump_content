@@ -296,6 +296,7 @@ if ($format === "line") {
         'export_date' => (new \DateTime())->format(\DateTime::RFC3339),
         'export' => $exportChoices,
         'types' => $exporter->createTypeList(),
+        'type_counts' => $this->createTypeCountList(),
     );
     $data = array_merge($data, $exporter->getExportItems());
     echo \Aplia\Formats\Json::encode($data, $prettyPrint), "\n";
