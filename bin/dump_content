@@ -342,9 +342,11 @@ $db->begin();
 EOT;
     } // end if preamble
 
+    $depthOffset = 1;
     $exporter = new \Aplia\Content\ContentExporter($options);
     if ($includeParent) {
         $exporter->addNode($parentNode);
+        $depthOffset = 0;
     }
     if ($depth !== 0) {
         $exporter->addQuery($query);
@@ -388,7 +390,7 @@ EOT;
                 foreach ($contentObject['locations'] as $nodeId => $contentNode) {
                     if ($topLevelParentNodeId &&
                         (isset($contentNode['original_depth']) && isset($options['start_depth'])) &&
-                        ($contentNode['original_depth'] == $options['start_depth'] + 1)) {
+                        ($contentNode['original_depth'] == $options['start_depth'] + $depthOffset)) {
                         if (is_numeric($topLevelParentNodeId)) {
                             $locationData = var_export(array(
                                 'parent_id' => $topLevelParentNodeId,
