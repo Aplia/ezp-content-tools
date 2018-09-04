@@ -623,7 +623,6 @@ class ContentObjectAttribute
             }
         }
 
-        if ($asString) {
         if ($asContent) {
             $attribute->setContent($value);
         } else if ($asString) {
