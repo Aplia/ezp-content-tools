@@ -973,7 +973,17 @@ class ContentImporter
         if (!$types) {
             throw new ImportDenied("No types defined in import");
         }
-        echo "Import contains: ", implode(", ", $types), "\n";
+        $type_counts = Arr::get($data, 'type_counts');
+        if ($type_counts) {
+            $counts = array();
+            foreach ($types as $type) {
+                $count = Arr::get($type_counts, $type);
+                $counts[] = "${type}: ${count}";
+            }
+            echo "Import contains: ", implode(", ", $counts), "\n";
+        } else {
+            echo "Import contains: ", implode(", ", $types), "\n";
+        }
         if ($this->promptYesOrNo("Do you wish to continue with import? [yes|no] ") !== "yes") {
             throw new ImportDenied("Import stopped");
         }
@@ -988,7 +998,17 @@ class ContentImporter
         if (!$types) {
             $types = array_diff(array_keys($data), array('__type__', 'export', 'export_date'));
         }
-        echo "Import contains: ", implode(", ", $types), "\n";
+        $type_counts = Arr::get($data, 'type_counts');
+        if ($type_counts) {
+            $counts = array();
+            foreach ($types as $type) {
+                $count = Arr::get($type_counts, $type);
+                $counts[] = "${type}: ${count}";
+            }
+            echo "Import contains: ", implode(", ", $counts), "\n";
+        } else {
+            echo "Import contains: ", implode(", ", $types), "\n";
+        }
         if ($this->promptYesOrNo("Do you wish to continue with import? [yes|no] ") !== "yes") {
             throw new ImportDenied("Import stopped");
         }
