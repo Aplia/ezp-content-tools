@@ -544,7 +544,7 @@ class ContentImporter
         if (!$part) {
             $part = "ezcontentnavigationpart";
         }
-        $section = new eZSection(array(
+        $section = new \eZSection(array(
             'identifier' => $identifier,
             'name' => $name,
             'navigation_part_identifier' => $part,
