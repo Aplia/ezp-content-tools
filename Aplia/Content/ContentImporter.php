@@ -81,7 +81,7 @@ class ContentImporter
             $this->fileStorage = $options['fileStorage'];
         }
         if (!$this->startNode) {
-            throw new UnsetValueError("ContentImporter requires start_node set");
+            throw new UnsetValueError("ContentImporter requires startNode/start_node set");
         }
         $this->addExistingNode($this->startNode, /*nodeUuid*/null, /*children*/null, true);
     }
@@ -422,15 +422,25 @@ class ContentImporter
             if ($originalPath && ($pos = strrpos($originalPath, "."))) {
                 $filePath = $filePath . substr($originalPath, $pos);
             }
-            if ($this->verbose) {
-                echo "Importing file ${originalFilename}, ${fileSizeText}";
-                if ($md5) {
-                    echo ", md5=${md5}";
+            if (file_exists($filePath) && filesize($filePath) === $fileSize && md5_file($filePath) == $md5) {
+                if ($this->verbose) {
+                    echo "Using stored file for ${originalFilename}, ${fileSizeText}";
+                    if ($md5) {
+                        echo ", md5=${md5}";
+                    }
+                    echo "\n";
                 }
-                echo "\n";
+            } else {
+                if ($this->verbose) {
+                    echo "Importing file ${originalFilename}, ${fileSizeText}";
+                    if ($md5) {
+                        echo ", md5=${md5}";
+                    }
+                    echo "\n";
+                }
+                file_put_contents($filePath, base64_decode($fileData['content_b64'], true));
+                $isTemporary = true;
             }
-            file_put_contents($filePath, base64_decode($fileData['content_b64'], true));
-            $isTemporary = true;
             unset($fileData['content_b64']);
         } else {
             if (!isset($fileData['path'])) {
@@ -450,6 +460,7 @@ class ContentImporter
             'status' => 'new',
             'path' => $filePath,
             'md5' => $md5,
+            'size' => $fileSize,
             'original_path' => $originalPath,
             'has_temp_file' => $isTemporary,
         );
