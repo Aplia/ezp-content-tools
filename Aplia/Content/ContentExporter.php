@@ -534,11 +534,11 @@ class ContentExporter
         if ($this->stateMap) {
             $types[] = 'content_state';
         }
-        if ($this->fileMap) {
-            $types[] = 'file';
-        }
         if ($this->tagMap) {
             $types[] = 'tag';
+        }
+        if ($this->fileMap) {
+            $types[] = 'file';
         }
         if ($this->classMap) {
             $types[] = 'content_class';
@@ -561,14 +561,14 @@ class ContentExporter
         if ($this->stateMap) {
             $data['content_states'] = $this->stateMap;
         }
-        if ($this->fileMap) {
-            $data['files'] = $this->fileMap;
-        }
         if ($this->tagMap) {
             $data['tags'] = $this->tagMap;
         }
         if ($this->classMap) {
             $data['content_classes'] = $this->classMap;
+        }
+        if ($this->fileMap) {
+            $data['files'] = $this->fileMap;
         }
         if ($this->objectMap) {
             $data['content_objects'] = $this->objectMap;
