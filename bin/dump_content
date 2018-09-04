@@ -21,7 +21,7 @@ $script = \eZScript::instance(
     )
 );
 $script->startup();
-$options = $script->getOptions("[format:][preamble][use-namespace][class:][parent-node:][depth:][exclude-parent][only-visible][file-storage:][include-relations][include-embeds][include-owners][update-first-parent:][summary]", "", array(
+$options = $script->getOptions("[format:][preamble][use-namespace][class:][parent-node:][depth:][exclude-parent][only-visible][file-storage:][include-relations][include-embeds][include-owners][summary]", "", array(
     "format" => "Type of format, choose between json, ndjson, php and line",
     "class" => "Limit search of objects to only these type of content-classes. Comma separated list",
     "parent-node" => "Choose starting point for export, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id> or path:<alias-path>",
@@ -32,7 +32,6 @@ $options = $script->getOptions("[format:][preamble][use-namespace][class:][paren
     'include-relations' => 'Include all objects which are related in export',
     'include-embeds' => 'Include all objects which are embedded in export',
     'include-owners' => 'Include objects for all owners',
-    "update-first-parent" => "Updates parent node on the top-level nodes in the export. Set this to a node id. (php format only)",
     "preamble" => "Whether to include preamble when exporting php (php format only)",
     "use-namespace" => "Whether to include ContentType namespace use statement (php format only)",
     "summary" => "Include commented summary at the end (php format only)",
@@ -113,7 +112,6 @@ if (Arr::get($options,'include-owners')) {
     $includeOwners = true;
 }
 $parentNodeId = Arr::get($options, 'parent-node');
-$topLevelParentNodeId = Arr::get($options, 'update-first-parent');
 $onlyVisible = false;
 if (Arr::get($options, 'only-visible')) {
     $onlyVisible = true;
@@ -342,11 +340,9 @@ $db->begin();
 EOT;
     } // end if preamble
 
-    $depthOffset = 1;
     $exporter = new \Aplia\Content\ContentExporter($options);
     if ($includeParent) {
         $exporter->addNode($parentNode);
-        $depthOffset = 0;
     }
     if ($depth !== 0) {
         $exporter->addQuery($query);
@@ -388,28 +384,15 @@ EOT;
             if (isset($contentObject['locations'])) {
                 $params['locations'] = array();
                 foreach ($contentObject['locations'] as $nodeId => $contentNode) {
-                    if ($topLevelParentNodeId &&
-                        (isset($contentNode['original_depth']) && isset($options['start_depth'])) &&
-                        ($contentNode['original_depth'] == $options['start_depth'] + $depthOffset)) {
-                        if (is_numeric($topLevelParentNodeId)) {
-                            $locationData = var_export(array(
-                                'parent_id' => $topLevelParentNodeId,
-                            ), true);
-                            echo "->addLocation($locationData)\n"; 
-                        } else {
-                            $script->shutdown(1, "Parameter 'update-first-parent' expected a node id, but got '$topLevelParentNodeId'");
-                        }
+                    if (isset($contentNode['parent_node_uuid'])) {
+                        $locationData = var_export(array(
+                            'parent_uuid' => $contentNode['parent_node_uuid'],
+                            'parent_root_type' => \Aplia\Content\ContentObject::mapNodeToTreeIdentifier($contentNode['parent_node_id']),
+                            'uuid' => $contentNode['uuid'],
+                        ), true);
+                        echo "->addLocation($locationData)\n";
                     } else {
-                        if (isset($contentNode['parent_node_uuid'])) {
-                            $locationData = var_export(array(
-                                'parent_uuid' => $contentNode['parent_node_uuid'],
-                                'parent_root_type' => \Aplia\Content\ContentObject::mapNodeToTreeIdentifier($contentNode['parent_node_id']),
-                                'uuid' => $contentNode['uuid'],
-                            ), true);
-                            echo "->addLocation($locationData)\n"; 
-                        } else {
-                            $script->shutdown(1, "Parent node uuid not defined in content object $contentObjectId");
-                        }
+                        $script->shutdown(1, "Parent node uuid not defined in content object $contentObjectId");
                     }
                 }
             }
