@@ -1206,6 +1206,7 @@ class ContentImporter
         if (!$languages) {
             throw new ImportDenied("No translations found on object with uuid=" . $objectUuid);
         }
+        $allLanguages = $languages;
         $mainLanguage = array_shift($languages);
         if (isset($objectData['translations'][$mainLanguage]['name'])) {
             $objectName = $objectData['translations'][$mainLanguage]['name'];
@@ -1268,8 +1269,8 @@ class ContentImporter
             foreach ($objectData['attributes'] as $identifier => $attributeData) {
                 $dataType = $classData['attributes'][$identifier]['type'];
                 // Verify attribute, and if it returns a new value used that for attribute data
-                $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
-                if (isset($attributeData['value'])) {
+                $attributeData = $this->verifyAttributeData($identifier, $dataType, $attributeData);
+                if (is_array($attributeData) && array_key_exists('value', $attributeData)) {
                     $objectData['attributes'][$identifier] = $attributeData['value'];
                     $isModified = true;
                 }
@@ -1281,14 +1282,14 @@ class ContentImporter
 
         // Verify all translated attributes
         $isModified = false;
-        foreach ($languages as $language) {
+        foreach ($allLanguages as $language) {
             if (isset($translations[$language]['attributes']) &&
                 $translations[$language]['attributes']) {
                 foreach ($translations[$language]['attributes'] as $identifier => $attributeData) {
                     $dataType = $classData['attributes'][$identifier]['type'];
                     // Verify attribute, and if it returns a new value used that for attribute data
-                    $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
-                    if (isset($attributeData['value'])) {
+                    $attributeData = $this->verifyAttributeData($identifier, $dataType, $attributeData);
+                    if (is_array($attributeData) && array_key_exists('value', $attributeData)) {
                         $translations[$language]['attributes'][$identifier] = $attributeData['value'];
                         $isModified = true;
                     }
