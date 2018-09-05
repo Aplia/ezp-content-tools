@@ -371,7 +371,7 @@ EOT;
             $objectName = $contentObject['name'];
             $uuidString = isset($params['uuid']) ? ", uuid: ".$params['uuid'] : "";
             $className = $contentObject['class_identifier'];
-            $classNameRepr = "\$".underscoreToCamelCase($className);
+            $classNameRepr = "\$" . underscoreToCamelCase($className) . "Type";
 
             if (isset($initializedClasses[$className])) {
                 $initializedClasses[$className][] = $objectName.$uuidString;
