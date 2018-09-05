@@ -559,6 +559,16 @@ class ContentType
 
         $this->resetPending();
 
+        \eZExpiryHandler::registerShutdownFunction();
+        $handler = \eZExpiryHandler::instance();
+        $time = time();
+        $handler->setTimestamp( 'user-class-cache', $time );
+        $handler->setTimestamp( 'class-identifier-cache', $time );
+        $handler->setTimestamp( 'sort-key-cache', $time );
+        $handler->store();
+
+        \eZContentCacheManager::clearAllContentCache();
+
         return $this;
     }
 
