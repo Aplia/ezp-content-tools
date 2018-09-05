@@ -52,6 +52,8 @@ The following are common for all attributes.
 - `value` - Addtional value to send to the data-type, this is an associative array and the content depends on the data-type.
 - `language` - The language of the attribute, defaults to the same language as the `ContentType` it belongs to.
 - `description` - Description text for the attribute.
+- `placeAfter` - Place attribute after the existing attribute, specified using the identifier
+- `placeBefore` - Place attribute before the existing attribute, specified using the identifier
 
 Similarly attributes may be removed with `removeAttribute` and supplying the identifier.
 This schedules the attribute to be removed on the next call to `save()`.

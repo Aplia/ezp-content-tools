@@ -8,9 +8,29 @@ use Aplia\Content\Exceptions\ValueError;
 use Aplia\Content\Exceptions\ObjectDoesNotExist;
 use Aplia\Support\Arr;
 use SimpleXMLElement;
+use eZPersistentObject;
 use eZContentClass;
+use eZContentClassAttribute;
 use eZContentObjectTreeNode;
 
+/**
+ * Defines an attribute for a content-class, either a new one or for an existing.
+ * 
+ * The following properties may be set with the constructor:
+ * - type - The data-type for the attribute, e.g. 'ezstring'
+ * - identifier - The unique (per class) identifier for the attribute, e.g. 'title'
+ * - value - A value or values to set for attribute, value type depends on 'type' used
+ * - id - ID of existing attribute to update, or null to create new
+ * - language - The language to use for new or updated attribute
+ * - name - Name of attribute in specified language
+ * - description - Description of attribute in specified language
+ * - isRequired - If true then the object attribute must be filled in by user
+ * - isSearchable - If true then the object contents may be found when searching
+ * - isInformationCollector - Whether object attribute is used for information-collector system or not
+ * - canTranslate - If true then object attribute may be translated
+ * - placeAfter - Identifier of attribute, new attribute is placed after this.
+ * - placeBefore - Identifier of attribute, new attribute is placed before this.
+ */
 class ContentTypeAttribute
 {
     public $name;
@@ -19,6 +39,14 @@ class ContentTypeAttribute
     public $value;
     public $id;
     public $description;
+    /**
+     * If set places the new attribute after this attribute, specified with an identifier
+     */
+    public $placeAfter;
+    /**
+     * If set places the new attribute before this attribute, specified with an identifier
+     */
+    public $placeBefore;
     public $language;
     public $isRequired = false;
     public $isSearchable = true;
@@ -59,6 +87,11 @@ class ContentTypeAttribute
             if (isset($fields['language'])) {
                 $this->language = $fields['language'];
             }
+            if (isset($fields['placeAfter'])) {
+                $this->placeAfter = $fields['placeAfter'];
+            } else if (isset($fields['placeBefore'])) {
+                $this->placeBefore = $fields['placeBefore'];
+            }
         }
     }
 
@@ -88,7 +121,7 @@ class ContentTypeAttribute
             'is_information_collector' => $this->isInformationCollector,
         );
         if ($this->id) {
-            $existing = \eZContentClassAttribute::fetchObject($this->id);
+            $existing = eZContentClassAttribute::fetchObject($this->id);
             if ($existing) {
                 throw new ObjectAlreadyExist("Content Class Attribute with ID: '$this->id' already exists, cannot create");
             }
@@ -98,14 +131,65 @@ class ContentTypeAttribute
         $content = null;
         $this->setAttributeFields($fields, $content, $contentClass);
 
-        $attribute = \eZContentClassAttribute::create($contentClass->attribute('id'), $this->type, $fields, $this->language);
+        $attribute = eZContentClassAttribute::create($contentClass->attribute('id'), $this->type, $fields, $this->language);
         $attribute->setName($name);
         if ($this->description !== null) {
             $attribute->setDescription($this->description);
         }
+        if ($this->placeAfter) {
+            $attributes = $contentClass->fetchAttributes();
+            $placement = null;
+            $adjustedPlacement = 1;
+            // Reassign placement values to all attributes while leaving a gap for the new attribute
+            foreach ($attributes as $existingAttribute) {
+                $existingAttribute->setAttribute('placement', $adjustedPlacement);
+                $existingAttribute->sync(array('placement'));
+                if ($placement === null && $existingAttribute->attribute('identifier') === $this->placeAfter) {
+                    // Use next placement for the new attribute and skip one entry for existing
+                    $adjustedPlacement = $adjustedPlacement + 1;
+                    $placement = $adjustedPlacement;
+                }
+                $adjustedPlacement = $adjustedPlacement + 1;
+            }
+            // If the specified attribute was not found, place it after the last one
+            if ($placement === null) {
+                $placement = $adjustedPlacement;
+            }
+        } else if ($this->placeBefore) {
+            $attributes = $contentClass->fetchAttributes();
+            $placement = null;
+            $adjustedPlacement = 1;
+            // Reassign placement values to all attributes while leaving a gap for the new attribute
+            foreach ($attributes as $existingAttribute) {
+                if ($placement === null && $existingAttribute->attribute('identifier') === $this->placeBefore) {
+                    // Use current placement for the new attribute and skip one entry for existing
+                    $placement = $adjustedPlacement;
+                    $adjustedPlacement = $adjustedPlacement + 1;
+                }
+                $existingAttribute->setAttribute('placement', $adjustedPlacement);
+                $existingAttribute->sync(array('placement'));
+                $adjustedPlacement = $adjustedPlacement + 1;
+            }
+            // If the specified attribute was not found, place it after the last one
+            if ($placement === null) {
+                $placement = $adjustedPlacement;
+            }
+        } else {
+            // Figure out next placement ID, the one calculated by eZ publish
+            // is wrong since it assumes that the version is 1
+            $placement = eZPersistentObject::newObjectOrder(
+                eZContentClassAttribute::definition(),
+                'placement',
+                array(
+                    'version' => $contentClass->attribute('version'),
+                    'contentclass_id' => $contentClass->attribute('id'),
+                )
+            );
+        }
         $this->classAttribute = $attribute;
         $dataType = $attribute->dataType();
         $dataType->initializeClassAttribute($attribute);
+        $attribute->setAttribute('placement', $placement);
         $attribute->store();
 
         if ($content !== null) {
