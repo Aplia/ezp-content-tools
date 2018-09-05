@@ -327,8 +327,15 @@ class ContentTypeAttribute
         // Since the type has changed on the class attribute and object
         // attributes with this type needs to change
         if ($oldType !== null && $oldType !== $this->type) {
+            $newType = $this->type;
+            $attributeId = $attribute->attribute('id');
+            // Update type for existing attributes
+            $db = \eZDB::instance();
+            $newTypeSql = "'" . $db->escapeString($newType) . "'";
+            $db->query("UPDATE ezcontentobject_attribute SET data_type_string=$newTypeSql WHERE contentclassattribute_id=${attributeId}");
+
             if ($this->objectTransform) {
-                $this->transformObjectAttributes($contentClass);
+                $this->transformObjectAttributes($contentClass, $oldType, $newType);
             } else {
                 // No transform defined, assume that the content does not have to change
             }
@@ -341,10 +348,10 @@ class ContentTypeAttribute
      * Goes over all object attributes using the current class attribute
      * and applies the transform function on each one.
      * The transform function receives object attribute, class attribute
-     * and class as parameters. The function must store the object attribute
-     * if it has changed.
+     * , class, old type and new type as parameters. The function must
+     * store the object attribute if it has changed.
      */
-    protected function transformObjectAttributes($contentClass)
+    protected function transformObjectAttributes($contentClass, $oldType, $newType)
     {
         $attribute = $this->classAttribute;
         $conditions = array(
@@ -370,7 +377,7 @@ class ContentTypeAttribute
                 break;
             }
             foreach ($attributes as $objectAttribute) {
-                $objectTransform($objectAttribute, $attribute, $contentClass);
+                $objectTransform($objectAttribute, $attribute, $contentClass, $oldType, $newType);
             }
             $limit['offset'] += $chunkSize;
         }
