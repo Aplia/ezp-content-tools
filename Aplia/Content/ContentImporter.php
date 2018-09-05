@@ -455,11 +455,13 @@ class ContentImporter
                 echo "\n";
             }
         }
+        $mimeType = @mime_content_type($filePath);
         $this->fileIndex[$uuid] = array(
             'uuid' => $uuid,
             'status' => 'new',
             'path' => $filePath,
             'md5' => $md5,
+            'mime_type' => $mimeType,
             'size' => $fileSize,
             'original_path' => $originalPath,
             'has_temp_file' => $isTemporary,
@@ -1305,14 +1307,42 @@ class ContentImporter
      */
     public function verifyAttributeData($identifier, $dataType, $attributeData)
     {
-        var_dump($dataType, $attributeData);
         if ($dataType === 'ezimage') {
             if (isset($attributeData['found']) && !$attributeData['found']) {
                 // Exporter did not find the image, so there is nothing to import
             } else if (isset($attributeData['uuid'])) {
                 $uuid = $attributeData['uuid'];
                 if (!isset($this->fileIndex[$uuid])) {
-                    throw new ImportDenied("ezbinaryfile attribute $identifier references file with UUID $uuid but it does not exist");
+                    throw new ImportDenied("ezbinaryfile attribute '${identifier}' references file with UUID $uuid but it does not exist");
+                }
+                $mimeType = $this->fileIndex[$uuid]['mime_type'];
+                $baseName = $this->fileIndex[$uuid]['original_path'];
+                if ($baseName !== null) {
+                    $baseName = basename($baseName);
+                } else {
+                    $baseName = basename($this->fileIndex[$uuid]['path']);
+                }
+                if ($mimeType) {
+                    list($group, $type) = explode("/", $mimeType, 2);
+                    if ($group !== 'image') {
+                        // This is not part of the image group, most likely not an image
+                        if ($this->verbose) {
+                            echo "Warning: Tried to insert non-image file '${baseName}' to ezimage attribute '${identifier}', ignoring file\n";
+                            echo "Mime-Type was '${mimeType}'\n";
+                        }
+                        return array(
+                            'value' => null,
+                        );
+                    }
+                } else {
+                    // Unknown file, most likely not an image, remove it
+                    if ($this->verbose) {
+                        echo "Warning: Tried to insert unknown file '${baseName}' to ezimage attribute '${identifier}', ignoring file\n";
+                        echo "Mime-Type was '${mimeType}'\n";
+                    }
+                    return array(
+                        'value' => null,
+                    );
                 }
             } else {
                 // No uuid so nothing to import
