@@ -376,7 +376,11 @@ class ContentObjectAttribute
             } else {
                 throw new TypeError("Unsupported value for ezobjectrelation attribute '" . $attribute->attribute('identifier') . "', value=" . var_export($value, true));
             }
-            $asString = true;
+            if ($value === null) {
+                $attribute->setAttribute('data_int', null);
+            } else {
+                $asString = true;
+            }
         } else if ($type === 'ezobjectrelationlist') {
             $objectIds = array();
             if (is_array($value)) {
