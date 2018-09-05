@@ -206,6 +206,9 @@ class ContentTypeAttribute
 
         $this->postUpdateAttributeFields($attribute, $contentClass);
 
+        // Now create all object attributes
+        $objects = null;
+        $attribute->initializeObjectAttributes($objects);
         return $attribute;
     }
 
