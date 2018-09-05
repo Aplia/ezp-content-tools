@@ -381,6 +381,23 @@ then the image file will be available in the file entry `portrait_image`.
 $object->setAttribute('image', new Aplia\Content\HttpFile('portrait_image'));
 ```
 
+## Configuration for import
+
+The cojntent importer supports using a configuration file to define
+mapping of data and defining transformation code to be run.
+
+### Object/ParentMap
+
+ParentMap allows for remapping the parents of imported locations to
+a new parent. It maps from the original UUID to a new UUID
+
+e.g.
+
+```
+[Object]
+ParentMap[16a72100ab6e3831dd0dffb10ef22902]=15ab238880ef4e989ab15823c906c005
+```
+
 ## Content input handler
 
 Content-tools supports extending support for 3rd-party data-types

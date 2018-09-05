@@ -49,6 +49,8 @@ class ContentImporter
     // object data for the replacement object, or has 'removed' => true to remove it.
     // This is for ownership and relations.
     public $objectRemapped = array();
+    // Maps parents from an old uuid to a new
+    public $parentUuidMap = array();
     
     // property $sectionIndex = array();
     // property $languageIndex = array();
@@ -287,12 +289,25 @@ class ContentImporter
         }
 
         if ($ini->hasVariable('Class', 'Transform')) {
-            $transforms = $ini->variable('State', 'Transform');
+            $transforms = $ini->variable('Class', 'Transform');
             foreach ($transforms as $newClass => $className) {
                 if (!class_exists($className)) {
                     throw new ImportDenied("Transform class $className used for content class $newClass does not exist");
                 }
                 $this->transformClass[$newClass] = new $className($ini);
+            }
+        }
+
+        // Mapping for parent, from old uuid to new uuid
+        if ($ini->hasVariable('Object', 'ParentMap')) {
+            $parentMaps = $ini->variable('Object', 'ParentMap');
+            foreach ($parentMaps as $parentUuid => $newParentUuid) {
+                $parent = eZContentObjectTreeNode::fetchByRemoteID($newParentUuid);
+                if (!$parent) {
+                    throw new ImportDenied("Transform of parent UUID from $parentUuid to $newParentUuid not possible as the new object does not exist");
+                }
+                $this->parentUuidMap[$parentUuid] = $newParentUuid;
+                $this->addExistingNode($parent, $newParentUuid);
             }
         }
     }
@@ -966,6 +981,16 @@ class ContentImporter
             foreach ($locations as $idx => $location) {
                 $nodeUuid = $location['uuid'];
                 $parentUuid = $location['parent_node_uuid'];
+                // See if parent is remapped
+                if (isset($this->parentUuidMap[$parentUuid])) {
+                    $newParentUuid = $this->parentUuidMap[$parentUuid];
+                    if ($this->verbose) {
+                        echo "Object location $nodeUuid remapped parent from $parentUuid to $newParentUuid\n";
+                    }
+                    $parentUuid = $newParentUuid;
+                    $location['parent_node_uuid'] = $parentUuid;
+                    $this->objectIndex['locations'][$idx]['parent_node_uuid'] = $parentUuid;
+                }
                 if (isset($this->nodeIndex[$nodeUuid])) {
                     if ($this->verbose) {
                         echo "Content-node with uuid $nodeUuid already exists, skipping\n";
