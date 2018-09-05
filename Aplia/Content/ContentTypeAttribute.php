@@ -11,6 +11,7 @@ use SimpleXMLElement;
 use eZPersistentObject;
 use eZContentClass;
 use eZContentClassAttribute;
+use eZContentObjectAttribute;
 use eZContentObjectTreeNode;
 
 /**
@@ -48,12 +49,14 @@ class ContentTypeAttribute
      */
     public $placeBefore;
     public $language;
-    public $isRequired = false;
-    public $isSearchable = true;
-    public $isInformationCollector = false;
-    public $canTranslate = true;
+    public $isRequired;
+    public $isSearchable;
+    public $isInformationCollector;
+    public $canTranslate;
 
     public $classAttribute;
+
+    protected $objectTransform;
 
     public function __construct($identifier, $type, $name, $fields = null)
     {
@@ -61,6 +64,9 @@ class ContentTypeAttribute
         $this->name = $name;
         $this->type = $type;
         if ($fields) {
+            if (isset($fields['classAttribute'])) {
+                $this->classAttribute = $fields['classAttribute'];
+            }
             if (isset($fields['id'])) {
                 $this->id = $fields['id'];
             }
@@ -92,6 +98,7 @@ class ContentTypeAttribute
             } else if (isset($fields['placeBefore'])) {
                 $this->placeBefore = $fields['placeBefore'];
             }
+            $this->objectTransform = Arr::get($fields, 'objectTransform');
         }
     }
 
@@ -115,10 +122,10 @@ class ContentTypeAttribute
         $fields = array(
             'identifier' => $identifier,
             'version' => $contentClass->attribute('version'),
-            'is_required' => $this->isRequired,
-            'is_searchable' => $this->isSearchable,
-            'can_translate' => $this->canTranslate,
-            'is_information_collector' => $this->isInformationCollector,
+            'is_required' => $this->isRequired !== null ? $this->isRequired : false,
+            'is_searchable' => $this->isSearchable !== null ? $this->isSearchable : true,
+            'can_translate' => $this->canTranslate !== null ? $this->canTranslate : true,
+            'is_information_collector' => $this->isInformationCollector !== null ? $this->isInformationCollector : false,
         );
         if ($this->id) {
             $existing = eZContentClassAttribute::fetchObject($this->id);
@@ -209,7 +216,164 @@ class ContentTypeAttribute
         // Now create all object attributes
         $objects = null;
         $attribute->initializeObjectAttributes($objects);
+
         return $attribute;
+    }
+
+    public function update($contentClass)
+    {
+        $name = $this->name;
+        $identifier = $this->identifier;
+        $attribute = $this->classAttribute;
+
+        $fields = array();
+        if ($this->isRequired !== null) {
+            $fields['is_required'] = $this->isRequired;
+        }
+        if ($this->isSearchable !== null) {
+            $fields['is_searchable'] = $this->isSearchable;
+        }
+        if ($this->canTranslate !== null) {
+            $fields['can_translate'] = $this->canTranslate;
+        }
+        if ($this->isInformationCollector !== null) {
+            $fields['is_information_collector'] = $this->isInformationCollector;
+        }
+
+        // If type is not changed then load from the class attribute
+        if ($this->type === null) {
+            $this->type = $oldType = $attribute->attribute('data_type_string');
+        } else {
+            $oldType = $attribute->attribute('data_type_string');
+        }
+
+        $content = null;
+        $this->setAttributeFields($fields, $content, $contentClass);
+
+        // Write a new type if it differs from the old type, object attributes
+        // will be updated later on in function
+        if ($oldType !== null && $oldType !== $this->type) {
+            $fields['data_type_string'] = $this->type;
+        }
+        foreach ($fields as $attributeName => $attributeValue) {
+            $attribute->setAttribute($attributeName, $attributeValue);
+        }
+        if ($name !== null) {
+            $attribute->setName($name);
+        }
+        if ($this->description !== null) {
+            $attribute->setDescription($this->description);
+        }
+        $placement = null;
+        if ($this->placeAfter) {
+            $attributes = $contentClass->fetchAttributes();
+            $placement = null;
+            $adjustedPlacement = 1;
+            // Reassign placement values to all attributes while leaving a gap for the new attribute
+            foreach ($attributes as $existingAttribute) {
+                $existingAttribute->setAttribute('placement', $adjustedPlacement);
+                $existingAttribute->sync(array('placement'));
+                if ($placement === null && $existingAttribute->attribute('identifier') === $this->placeAfter) {
+                    // Use next placement for the new attribute and skip one entry for existing
+                    $adjustedPlacement = $adjustedPlacement + 1;
+                    $placement = $adjustedPlacement;
+                }
+                $adjustedPlacement = $adjustedPlacement + 1;
+            }
+            // If the specified attribute was not found, place it after the last one
+            if ($placement === null) {
+                $placement = $adjustedPlacement;
+            }
+        } else if ($this->placeBefore) {
+            $attributes = $contentClass->fetchAttributes();
+            $placement = null;
+            $adjustedPlacement = 1;
+            // Reassign placement values to all attributes while leaving a gap for the new attribute
+            foreach ($attributes as $existingAttribute) {
+                if ($placement === null && $existingAttribute->attribute('identifier') === $this->placeBefore) {
+                    // Use current placement for the new attribute and skip one entry for existing
+                    $placement = $adjustedPlacement;
+                    $adjustedPlacement = $adjustedPlacement + 1;
+                }
+                $existingAttribute->setAttribute('placement', $adjustedPlacement);
+                $existingAttribute->sync(array('placement'));
+                $adjustedPlacement = $adjustedPlacement + 1;
+            }
+            // If the specified attribute was not found, place it after the last one
+            if ($placement === null) {
+                $placement = $adjustedPlacement;
+            }
+        }
+        $this->classAttribute = $attribute;
+        if ($placement !== null) {
+            $attribute->setAttribute('placement', $placement);
+        }
+        $attribute->store();
+
+        if ($content !== null) {
+            $existingContent = $attribute->content();
+            if (is_array($existingContent) && is_array($content)) {
+                // Merge the defaults with the new values, this ensures that
+                // the array contains all the values the the data-type
+                // expects.
+                $content = array_merge($existingContent, $content);
+            }
+            $attribute->setContent($content);
+            $attribute->store();
+        }
+
+        $this->postUpdateAttributeFields($attribute, $contentClass);
+
+        // Since the type has changed on the class attribute and object
+        // attributes with this type needs to change
+        if ($oldType !== null && $oldType !== $this->type) {
+            if ($this->objectTransform) {
+                $this->transformObjectAttributes($contentClass);
+            } else {
+                // No transform defined, assume that the content does not have to change
+            }
+        }
+
+        return $attribute;
+    }
+
+    /**
+     * Goes over all object attributes using the current class attribute
+     * and applies the transform function on each one.
+     * The transform function receives object attribute, class attribute
+     * and class as parameters. The function must store the object attribute
+     * if it has changed.
+     */
+    protected function transformObjectAttributes($contentClass)
+    {
+        $attribute = $this->classAttribute;
+        $conditions = array(
+            "contentclassattribute_id" => $attribute->attribute('id'),
+        );
+        $chunkSize = 100;
+        $limit = array(
+            'offset' => 0,
+            'limit' => $chunkSize,
+        );
+        $objectTransform = $this->objectTransform;
+        // Fetch all object attributes using this class-attribute, fetch
+        // in chunks 100 at a time
+        while (true) {
+            $attributes = eZPersistentObject::fetchObjectList(
+                 eZContentObjectAttribute::definition(),
+                 /*fields*/null,
+                 /*conds*/$conditions,
+                 /*sorts*/null,
+                 $limit,
+                 true);
+            if (!$attributes) {
+                break;
+            }
+            foreach ($attributes as $objectAttribute) {
+                $objectTransform($objectAttribute, $attribute, $contentClass);
+            }
+            $limit['offset'] += $chunkSize;
+        }
     }
 
     /*!

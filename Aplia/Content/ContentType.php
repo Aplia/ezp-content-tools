@@ -1,6 +1,7 @@
 <?php
 namespace Aplia\Content;
 
+use Aplia\Support\Arr;
 use Aplia\Content\Exceptions\ObjectDoesNotExist;
 use Aplia\Content\Exceptions\ObjectAlreadyExist;
 use Aplia\Content\Exceptions\UnsetValueError;
@@ -229,7 +230,7 @@ class ContentType
         if (isset($this->attributesRemove[$identifier])) {
             return false;
         }
-        if (isset($this->attributesNew[$identifier]) || isset($this->_attributes[$identifier])) {
+        if (isset($this->attributesNew[$identifier]) || isset($this->attributesChange[$identifier]) || isset($this->_attributes[$identifier])) {
             return true;
         }
         $this->loadAttributeMap();
@@ -276,6 +277,15 @@ class ContentType
             if (!($attr instanceof ContentTypeAttribute)) {
                 $attr = new ContentTypeAttribute($attr['identifier'], $attr['type'], $attr['name'], $attr);
             }
+            $this->attributesNew[$identifier] = $attr;
+            return $attr;
+        }
+        if (isset($this->attributesChange[$identifier])) {
+            $attr = $this->attributesChange[$identifier];
+            if (!($attr instanceof ContentTypeAttribute)) {
+                $attr = new ContentTypeAttribute($attr['identifier'], Att::get($attr, 'type'), Attr::get($attr, 'name'), $attr);
+            }
+            $this->attributesChange[$identifier] = $attr;
             return $attr;
         }
         return $this->_attributes[$identifier];
@@ -466,12 +476,22 @@ class ContentType
             $attr = $this->createAttribute($attrData);
             $this->_attributes[$attr->identifier] = $attr;
         }
+        foreach ($this->attributesChange as $identifier => $attrData) {
+            if ($attrData instanceof ContentTypeAttribute) {
+                $attr = $attrData;
+            } else {
+                $attr = new ContentTypeAttribute($attrData['identifier'], Att::get($attrData, 'type'), Attr::get($attrData, 'name'), $attrData);
+            }
+            $attr->update($contentClass);
+            $this->_attributes[$attr->identifier] = $attr;
+        }
         foreach ($this->attributesRemove as $identifier => $attrData) {
             $classAttribute = $contentClass->fetchAttributeByIdentifier($identifier);
             $classAttribute->removeThis();
             unset($this->_attributes[$identifier]);
         }
         $this->attributesNew = array();
+        $this->attributesChange = array();
         $this->attributesRemove = array();
 
         // Translate content if needed
@@ -625,6 +645,83 @@ class ContentType
             $attr = new ContentTypeAttribute($identifier, $type, $name, $attr);
         }
         $this->attributesNew[$attr->identifier] = $attr;
+        unset($this->attributesChange[$identifier]);
+        unset($this->attributesRemove[$identifier]);
+        return $this;
+    }
+
+    /**
+     * Change an existing attribute.
+     *
+     * This method can be called with different amount of parameters.
+     *
+     * With one parameter it expects an associative array, the array
+     * contains all the parameters by name. Or it can be a
+     * ContentTypeAttribute object, or a string which is used for identifier.
+     *
+     * With two parameters, the first is the identifier, and the second is
+     * an associative array with the rest of the named parameters. The
+     * second may also be a CotentTypeAttribute object.
+     * 
+     * If 'type' is specified in attribute fields then it will change the
+     * type of the attribute and any object using this class. Optionally
+     * set the 'typeTransform' to a callback function to allow it to be
+     * called when changing the class-attribute.
+     * For objects use 'objectTransform'.
+     *
+     * Note: The attribute will only be updated when the content-class is updated.
+     *
+     * @throws ObjectDoesNotExist If the specified attribute does not exist
+     * @return self
+     */
+    public function setAttribute($identifier=null, $attr=null)
+    {
+        $argc = func_num_args();
+        if ($argc == 1) {
+            if (is_array($identifier)) {
+                if (!isset($identifier['identifier'])) {
+                    throw new ImproperlyConfigured("Required fields 'name' and 'identifier' not specified");
+                }
+                $attr = $identifier;
+                $identifier = $attr['identifier'];
+            } else if (is_string($identifier)) {
+                $attr = array();
+            } else if ($identifier instanceof ContentTypeAttribute) {
+                $attr = $identifier;
+                $identifier = $attr->identifier;
+            } else {
+                throw new ImproperlyConfigured("Parameter \$identifier is not a valid string, got: " . var_export($identifier, true));
+            }
+        } else if ($argc >= 2) {
+            if (is_array($attr)) {
+                // pass
+            } else if ($attr === null) {
+                $attr = array();
+            } else if ($attr instanceof ContentTypeAttribute) {
+                // pass
+            } else {
+                throw new ImproperlyConfigured("Required field 'identifier' not specified");
+            }
+        }
+        $contentClass = $this->getContentClass();
+        if (!isset($attr['classAttribute'])) {
+            $classAttribute = $contentClass->fetchAttributeByIdentifier($identifier);
+            if (!$classAttribute) {
+                $classIdentifier = $contentClass->identifier;
+                throw new ObjectDoesNotExist("The content-class '${classIdentifier}' does not have an attribute with identifier '${identifier}'");
+            }
+            $attr['classAttribute'] = $classAttribute;
+        }
+        if (!$attr instanceof ContentTypeAttribute) {
+            $type = Arr::get($attr, 'type');
+            $name = Arr::get($attr, 'name');
+            if (!isset($attr['language'])) {
+                $attr['language'] = $this->language;
+            }
+            $attr = new ContentTypeAttribute($identifier, $type, $name, $attr);
+        }
+        $this->attributesChange[$attr->identifier] = $attr;
+        unset($this->attributesNew[$identifier]);
         unset($this->attributesRemove[$identifier]);
         return $this;
     }
@@ -647,6 +744,7 @@ class ContentType
             return $this;
         }
         unset($this->attributesNew[$identifier]);
+        unset($this->attributesChange[$identifier]);
         $this->attributesRemove[$identifier] = array();
         return $this;
     }
