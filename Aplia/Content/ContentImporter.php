@@ -1476,6 +1476,51 @@ class ContentImporter
                 );
             }
             return;
+        } else if ($dataType === 'ezxmltext') {
+            if (isset($attributeData['xml'])) {
+                $xml = $attributeData['xml'];
+                $dom = new \DOMDocument('1.0', 'utf-8');
+                if (!@$dom->loadXML($this->value)) {
+                    return array(
+                        'value' => null,
+                    );
+                }
+                $xpath = new \DOMXPath($dom);
+
+                // Embedded objects must include references to uuid and optionally added to exported items
+                $embedObjects = array();
+                $embeds = $xpath->query('//embed');
+                foreach ($embeds as $embed) {
+                    $embedUuid = $embed->getAttribute('uuid');
+                    $hasEmbedObject = false;
+                    if (isset($this->objectIndex[$embedUuid])) {
+                        $hasEmbedObject = true;
+                    } else {
+                        $embedObject = \eZContentObject::fetchByRemoteID($embedUuid);
+                        $hasEmbedObject = (bool)$embedObject;
+                    }
+                    if (!$hasEmbedObject) {
+                        if ($this->interactive) {
+                            echo "XML: Embedded object with UUID ${embedUuid} was not found\n";
+                            if ($this->promptYesOrNo("Do you wish to remove embed entry? [yes/no] ") !== 'no') {
+                                throw new ImportDenied("XML content for attribute ${identifier} has embedded object with UUID ${embedUuid} which does not exist");
+                            }
+                        }
+                        $parentNode = $embed->parentNode;
+                        $parentNode->removeChild($embed);
+                        continue;
+                        // $embed->removeAttribute("object_id");
+                        // $embed->removeAttribute("uuid");
+                    }
+                }
+
+                $xml = $dom->saveXML();
+                $attributeData['xml'] = $xml;
+                return array(
+                    'value' => $attributeData,
+                );
+            }
+            return;
         }
         return;
     }

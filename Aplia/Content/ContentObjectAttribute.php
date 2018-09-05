@@ -916,10 +916,72 @@ class ContentObjectAttribute
             }
 
             // Then store the xml text
-            $attribute->setAttribute('data_text', $value->rawText);
+            $xml = $value->rawText;
+            $xml = $this->updateXmlContent($xml);
+            $attribute->setAttribute('data_text', $xml);
         } else {
             throw new ValueError("Cannot update attribute data for '{$this->identifier}', unsupported content value: " . var_export($value, true));
         }
+    }
+
+    /**
+     * Updates the XML content for ezxmltext by doing the following:
+     * 
+     * For link entries it replaces the href with a link_id by storing the referenced
+     * url in eZURL.
+     * 
+     * For embed entries it find the referenced object by uuid and stores the
+     * object_id.
+     * 
+     * Returns the transformed xml as text.
+     * 
+     * @return string
+     */
+    protected function updateXmlContent($xml)
+    {
+        $dom = new \DOMDocument('1.0', 'utf-8');
+        if (!@$dom->loadXML($xml)) {
+            return $xml;
+        }
+        $xpath = new \DOMXPath($dom);
+
+        // Links must transform href into url objects with ID stored in xml
+        $links = $xpath->query('//link');
+        foreach ($links as $link) {
+            $url = $link->getAttribute('href');
+            if (!$url) {
+                continue;
+            }
+            $urlId = \eZURL::registerURL($url);
+            // url_id
+            if ($urlId) {
+                $link->setAttribute('url_id', $urlId);
+                $link->removeAttribute('href');
+            }
+        }
+
+        // Embedded objects with uuid must transformed to use object_id
+        $embedObjects = array();
+        $embeds = $xpath->query('//embed');
+        foreach ($embeds as $embed) {
+            $embedUuid = $embed->getAttribute('uuid');
+            if (!$embedUuid) {
+                // If there is no uuid leave it as-is
+                continue;
+            }
+            $embedObject = \eZContentObject::fetchByRemoteID($embedUuid);
+            if (!$embedObject) {
+                echo "XML: Embedded object with UUID ${embedUuid} does not exist\n";
+                $parentNode = $embed->parentNode;
+                $parentNode->removeChild($embed);
+                continue;
+            }
+            $embed->setAttribute('object_id', $embedObject->attribute('id'));
+            $embed->removeAttribute('uuid');
+        }
+
+        $xml = $dom->saveXML();
+        return $xml;
     }
 
     /**

@@ -1074,7 +1074,7 @@ class ContentType
             $this->loadAttributeMap();
             return $this->_attributes;
         }
-        throw Exception("Property $name does not exist");
+        throw new \Exception("Property $name does not exist");
     }
 
     /**
