@@ -626,7 +626,9 @@ class ContentObjectAttribute
         if ($asContent) {
             $attribute->setContent($value);
         } else if ($asString) {
-            $attribute->fromString($value);
+            if ($attribute->fromString($value) === false) {
+                throw new ValueError("Failed to import data using fromString(), data-type '${type}' reports false, value: " . var_export($value, true));
+            }
         }
         $attribute->store();
         $this->contentAttribute = $attribute;
