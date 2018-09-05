@@ -210,6 +210,26 @@ try {
     $cli->output("Finalizing imported data");
     $importer->finalize();
     $cli->output("Imported " . $importer->recordCount . " records");
+    $created = $importer->getCreatedCounts();
+    $updated = $importer->getUpdatedCounts();
+    if ($created) {
+        $values = array();
+        foreach ($created as $createType => $createCount) {
+            $values[] = "${createType}: ${createCount}";
+        }
+        $cli->output("Created: " . implode(", ", $values));
+    } else {
+        $cli->output("Nothing was created");
+    }
+    if ($updated) {
+        $values = array();
+        foreach ($updated as $updateType => $updateCount) {
+            $values[] = "${updateType}: ${updateCount}";
+        }
+        $cli->output("Updated: " . implode(", ", $values));
+    } else {
+        $cli->output("Nothing was updated");
+    }
 
     $importer->cleanupTemporary();
 } catch (\Aplia\Content\Exceptions\ImportDenied $e) {

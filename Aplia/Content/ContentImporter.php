@@ -73,6 +73,13 @@ class ContentImporter
 
     // Used to resolve relative file imports
     protected $importPath = null;
+    protected $importCounts = array(
+        'section_create' => 0,
+        'contentlanguage_create' => 0,
+        'contentstate_create' => 0,
+        'contentobject_update' => 0,
+        'contentobject_create' => 0,
+    );
 
     public function __construct(array $options = null) {
         if (isset($options['startNode'])) {
@@ -587,6 +594,7 @@ class ContentImporter
         if ($this->verbose) {
             echo "Imported section $identifier (was $originalIdentifier)\n";
         }
+        $this->importCounts['section_create'] = $this->importCounts['section_create'] + 1;
     }
 
     public function importContentLanguage($languageData)
@@ -656,6 +664,7 @@ class ContentImporter
         if ($this->verbose) {
             echo "Imported content language $identifier\n";
         }
+        $this->importCounts['contentlanguage_create'] = $this->importCounts['contentlanguage_create'] + 1;
     }
 
     public function importState($stateData)
@@ -781,6 +790,7 @@ class ContentImporter
                 // $state->store();
             }
         }
+        $this->importCounts['contentstate_create'] = $this->importCounts['contentstate_create'] + 1;
 
         // Store in index with ID
         $this->stateIndex[$identifier] = array(
@@ -1564,6 +1574,7 @@ class ContentImporter
                 if ($this->verbose) {
                     echo "Updated object id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), "\n";
                 }
+                $this->importCounts['contentobject_update'] = $this->importCounts['contentobject_update'] + 1;
             } else {
                 $objectManager->create();
                 $contentObject = $objectManager->contentObject;
@@ -1571,6 +1582,7 @@ class ContentImporter
                 if ($this->verbose) {
                     echo "Created object skeleton: id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), ", name='", $objectName, "'\n";
                 }
+                $this->importCounts['contentobject_create'] = $this->importCounts['contentobject_create'] + 1;
             }
             $nodes = $objectManager->nodes;
             if (!isset($nodes[$nodeUuid])) {
@@ -1890,5 +1902,50 @@ class ContentImporter
         }
         // Remove missing entry if it exists
         unset($this->nodeMissingIndex[$nodeUuid]);
+    }
+
+    /**
+     * Figures out which types of objects have been created and returns
+     * an associative array with type as key and count as value. Only
+     * types which have created something is included.
+     * 
+     * If nothing is created it returns an empty array.
+     * 
+     * @return array
+     */
+    public function getCreatedCounts()
+    {
+        $counts = array();
+        if ($this->importCounts['section_create']) {
+            $counts['section'] = $this->importCounts['section_create'];
+        }
+        if ($this->importCounts['contentlanguage_create']) {
+            $counts['contentlanguage'] = $this->importCounts['contentlanguage_create'];
+        }
+        if ($this->importCounts['contentstate_create']) {
+            $counts['contentstate'] = $this->importCounts['contentstate_create'];
+        }
+        if ($this->importCounts['contentobject_create']) {
+            $counts['contentobject'] = $this->importCounts['contentobject_create'];
+        }
+        return $counts;
+    }
+
+    /**
+     * Figures out which types of objects have been created and returns
+     * an associative array with type as key and count as value. Only
+     * types which have created something is included.
+     * 
+     * If nothing is created it returns an empty array.
+     * 
+     * @return array
+     */
+    public function getUpdatedCounts()
+    {
+        $counts = array();
+        if ($this->importCounts['contentobject_update']) {
+            $counts['contentobject'] = $this->importCounts['contentobject_update'];
+        }
+        return $counts;
     }
 }
