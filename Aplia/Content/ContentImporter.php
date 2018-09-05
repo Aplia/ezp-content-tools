@@ -1169,7 +1169,7 @@ class ContentImporter
     {
         if ($nodeData['status'] === 'new' || $nodeData['status'] === 'created') {
             if ($this->verbose) {
-                echo "Updating node ", $nodeData['uuid'], "\n";
+                echo "Verifying node ", $nodeData['uuid'], "\n";
             }
             $objectData = $this->objectIndex[$nodeData['object_uuid']];
             $this->verifyObjectContent($objectData);
@@ -1198,6 +1198,9 @@ class ContentImporter
     public function verifyObjectContent($objectData)
     {
         $objectUuid = $objectData['uuid'];
+        if ($this->verbose) {
+            echo "Verifying object uuid=${objectUuid}\n";
+        }
         $translations = $objectData['translations'];
         $languages = array_keys($translations);
         if (!$languages) {
@@ -1294,10 +1297,6 @@ class ContentImporter
         }
         if ($isModified) {
             $this->objectIndex[$objectUuid]['translations'] = $translations;
-        }
-
-        if ($this->verbose) {
-            echo "Verified object uuid=${objectUuid}\n";
         }
     }
 
