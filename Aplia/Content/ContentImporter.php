@@ -71,6 +71,9 @@ class ContentImporter
     // be removed after import is completed.
     public $tempFiles = array();
 
+    // Used to resolve relative file imports
+    protected $importPath = null;
+
     public function __construct(array $options = null) {
         if (isset($options['startNode'])) {
             $this->startNode = $options['startNode'];
@@ -288,6 +291,19 @@ class ContentImporter
     }
 
     /**
+     * Changes the import path for future imports.
+     * The path is used when looking up relative paths, such as for
+     * imported files. This allows the paths to adjusted relative to
+     * the import path.
+     * 
+     * @param $path String with path or empty to use relative path
+     */
+    public function setImportPath($path=null)
+    {
+        $this->importPath = ($path && $path !== '.' && $path !== './') ? $path : "";
+    }
+
+    /**
      * Loads all existing eZSection identifiers and registers them in the index.
      */
     public function loadSections()
@@ -447,6 +463,16 @@ class ContentImporter
                 throw new TypeError("File record has neither 'path' nor 'content_b64' set, cannot import");
             }
             $filePath = $fileData['path'];
+            if (preg_match("#^(/|[a-z]:[/\\\\])#", $filePath)) {
+                // Abs path, keep as-is
+            } else if ($this->importPath) {
+                // Adjust relative path to import path
+                $filePath = $this->importPath . "/" . $filePath;
+            }
+            if (!file_exists($filePath)) {
+                throw new ImportDenied("Imported file '${filePath}' with uuid $uuid does not exist");
+            }
+            $filePath = realpath($filePath);
             if ($this->verbose) {
                 echo "Using stored file for ${originalFilename}, ${fileSizeText}";
                 if ($md5) {

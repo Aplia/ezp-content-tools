@@ -198,6 +198,7 @@ try {
         if (!file_exists($filePath)) {
             $script->shutdown(1, "Import file $filePath does not exist");
         }
+        $importer->setImportPath(dirname($filePath));
         if (substr($filePath, -7) === '.ndjson') {
             parseNdjson($importer, $filePath);
         } else if (substr($filePath, -5) === '.json') {
