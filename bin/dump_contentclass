@@ -205,6 +205,7 @@ foreach ($identifiers as $identifier) {
             }
         }
         echo "\n    // Define attributes";
+        $lastIdentifier = null;
         foreach ($attributes as $attribute) {
             $classAttribute = $attribute->classAttribute;
             $attributeType = $classAttribute->attribute('data_type_string');
@@ -227,6 +228,9 @@ foreach ($identifiers as $identifier) {
                     $attributeFields['content']['selection_type'] = $attribute->objectRelationSelectionTypeMap($attributeFields['content']['selection_type'], true);
                 }
             }
+            if ($lastIdentifier !== null) {
+                $attributeFields['placeAfter'] = $lastIdentifier;
+            }
             $attributeFields['isSearchable'] = (bool)$classAttribute->attribute('is_searchable');
             $attributeFields['isRequired'] = (bool)$classAttribute->attribute('is_required');
             $attributeFields['canTranslate'] = (bool)$classAttribute->attribute('can_translate');
@@ -238,6 +242,7 @@ foreach ($identifiers as $identifier) {
             "        ${attributeTypeRepr},\n",
             "        ${attributeFieldsRepr}\n",
             "    )";
+            $lastIdentifier = $classAttribute->attribute('identifier');
        }
        if ($languages) {
            echo "\n    // Translate content";
