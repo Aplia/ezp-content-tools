@@ -227,11 +227,11 @@ foreach ($identifiers as $identifier) {
                     $attributeFields['content']['selection_type'] = $attribute->objectRelationSelectionTypeMap($attributeFields['content']['selection_type'], true);
                 }
             }
-            $attributeFields['is_searchable'] = (bool)$classAttribute->attribute('is_searchable');
-            $attributeFields['is_required'] = (bool)$classAttribute->attribute('is_required');
-            $attributeFields['can_translate'] = (bool)$classAttribute->attribute('can_translate');
+            $attributeFields['isSearchable'] = (bool)$classAttribute->attribute('is_searchable');
+            $attributeFields['isRequired'] = (bool)$classAttribute->attribute('is_required');
+            $attributeFields['canTranslate'] = (bool)$classAttribute->attribute('can_translate');
             if ($classAttribute->attribute('is_information_collector')) {
-                $attributeFields['is_information_collector'] = true;
+                $attributeFields['isInformationCollector'] = true;
             }
             $attributeFieldsRepr = indentTextLines(var_export($attributeFields, true), 8, false);
             echo "\n    ->addAttribute(\n",
