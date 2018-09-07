@@ -107,6 +107,9 @@ class ContentObject
      $stateObjects;
     */
 
+    static $rootIdentifierToNode = null;
+    static $rootNodeToIdentifier = null;
+
     protected $_contentClass = 'unset';
     protected $_identifier;
     protected $_locations;
@@ -566,6 +569,10 @@ class ContentObject
      */
     public static function mapNodeToTreeIdentifier($nodeId)
     {
+        // First check quick lookup
+        if (isset(self::$rootNodeToIdentifier[$nodeId])) {
+            return self::$rootNodeToIdentifier[$nodeId];
+        }
         $contentIni = eZINI::instance('content.ini');
         $identifier = null;
         if ($contentIni->variable('NodeSettings', 'RootNode') == $nodeId) {
@@ -578,6 +585,26 @@ class ContentObject
             $identifier = 'setup';
         } else if ($contentIni->variable('NodeSettings', 'DesignRootNode') == $nodeId) {
             $identifier = 'content';
+        } else if ($contentIni->hasVariable('NodeSettings', 'RootNodes')) {
+            $rootNodes = $contentIni->variable('NodeSettings', 'RootNodes');
+            $identifier = array_search($nodeId, $rootNodes);
+            if ($identifier !== false) {
+                // Store quick lookup for future checks
+                self::$rootNodeToIdentifier[$nodeId] = $identifier;
+                return $identifier;
+            }
+            // If not found with id, try uuid
+            $node = eZContentObjectTreeNode::fetch($nodeId, /*lang*/false, /*asObject*/false);
+            if ($node && $node['remote_id']) {
+                $nodeUuid = 'uuid:' . $node['remote_id'];
+                $identifier = array_search($nodeUuid, $rootNodes);
+                if ($identifier !== false) {
+                    // Store quick lookup for future checks
+                    self::$rootNodeToIdentifier[$nodeId] = $identifier;
+                    return $identifier;
+                }
+            }
+            $identifier = null;
         }
         return $identifier;
     }
@@ -590,6 +617,10 @@ class ContentObject
      */
     public static function mapTreeIdentifierToNode($identifier)
     {
+        // First check quick lookup
+        if (isset(self::$rootIdentifierToNode[$identifier])) {
+            return self::$rootIdentifierToNode[$identifier];
+        }
         $contentIni = eZINI::instance('content.ini');
         if ($treeId === 'content') {
             return $contentIni->variable('NodeSettings', 'RootNode');
@@ -602,9 +633,23 @@ class ContentObject
         } else {
             if ($contentIni->hasVariable('NodeSettings', 'RootNodes')) {
                 $rootNodes = $contentIni->variable('NodeSettings', 'RootNodes');
-                if (isset($rootNodes[$treeId])) {
-                    return $rootNodes[$treeId];
+                if (!isset($rootNodes[$treeId])) {
+                    return null;
                 }
+                $nodeId = $rootNodes[$treeId];
+                if (!substr($nodeId, 0, 5) === 'uuid:') {
+                    // Store quick lookup for future checks
+                    self::$rootIdentifierToNode[$identifier] = $nodeId;
+                    return $nodeId;
+                }
+                $nodeUuid = substr($nodeId, 5);
+                $node = eZContentObjectTreeNode::fetchByRemoteID($nodeUuid, false);
+                if ($node) {
+                    // Store quick lookup for future checks
+                    self::$rootIdentifierToNode[$identifier] = $node['node_id'];
+                    return $node['node_id'];
+                }
+                return null;
             }
         }
     }
