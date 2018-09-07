@@ -10,6 +10,8 @@ Changelog for the `content-tools` package.
 - Tree node 1 is now considered tree identifier 'top'
 - Fixed tree identifier in dump_content.
 - Fixed issues with creating/removing class groups.
+- Added ContentMigration class to aid in migrating eZ content.
+  This requires that Phinx is installed.
 
 ## 1.5
 
