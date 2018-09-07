@@ -575,7 +575,9 @@ class ContentObject
         }
         $contentIni = eZINI::instance('content.ini');
         $identifier = null;
-        if ($contentIni->variable('NodeSettings', 'RootNode') == $nodeId) {
+        if ($nodeId == 1) {
+            $identifier = 'top';
+        } else if ($contentIni->variable('NodeSettings', 'RootNode') == $nodeId) {
             $identifier = 'content';
         } else if ($contentIni->variable('NodeSettings', 'UserRootNode') == $nodeId) {
             $identifier = 'users';
