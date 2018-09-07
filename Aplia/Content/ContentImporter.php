@@ -537,6 +537,11 @@ class ContentImporter
             $objectData['owner']['uuid'] = $newOwnerUuid;
         }
 
+        // Remap section
+        if (isset($objectData['section_identifier'])) {
+            $objectData['section_identifier'] = $this->remapSectionIdentifier($objectData['section_identifier']);
+        }
+
         // Remap relations
         $relations = Arr::get($objectData, 'related');
         if ($relations) {
@@ -2005,7 +2010,6 @@ class ContentImporter
             $sectionIdentifier = null;
             if (isset($objectData['section_identifier'])) {
                 $sectionIdentifier = $objectData['section_identifier'];
-                $sectionIdentifier = $this->remapSectionIdentifier($sectionIdentifier);
             }
             $objectFields = array(
                 'uuid' => $objectUuid,
