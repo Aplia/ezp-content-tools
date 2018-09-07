@@ -10,6 +10,7 @@ use Aplia\Content\Exceptions\ImproperlyConfigured;
 use Aplia\Content\ContentTypeAttribute;
 use Aplia\Content\ContentObject;
 use eZContentClass;
+use eZContentClassGroup;
 use eZContentClassClassGroup;
 use eZContentObjectTreeNode;
 
@@ -814,6 +815,12 @@ class ContentType
                 'group' => $group,
             );
         }
+        // Remove any existing adds/removes of same group
+        foreach ($this->groups as $idx => $existing) {
+            if ($existing['group'] === $group) {
+                unset($this->groups[$idx]);
+            }
+        }
         $this->groups[] = $group;
         return $this;
     }
@@ -829,6 +836,12 @@ class ContentType
      */
     public function removeFromGroup($group)
     {
+        // Remove any existing adds/removes of same group
+        foreach ($this->groups as $idx => $existing) {
+            if ($existing['group'] === $group) {
+                unset($this->groups[$idx]);
+            }
+        }
         $this->groups[] = array(
             'group' => $group,
             'remove' => true,
@@ -932,23 +945,25 @@ class ContentType
                 if (!isset($group['group'])) {
                     throw new ValueError("Group assignment was specified with an array but the 'group' entry is missing");
                 }
-                $group = $group['group'];
+                $groupItem = $group['group'];
             }
-            if ($group instanceof eZContentClassClassGroup) {
-                continue;
-            } elseif ($group instanceof \eZContentClassGroup) {
-            } elseif (is_numeric($group)) {
-                $group = \eZContentClassGroup::fetch($group);
+            if ($groupItem instanceof eZContentClassClassGroup) {
+                $groupId = $groupItem->attribute('group_id');
+            } elseif ($groupItem instanceof eZContentClassGroup) {
+                $groupId = $groupItem->attribute('id');
+            } elseif (is_numeric($groupItem)) {
+                $group = eZContentClassGroup::fetch($groupItem);
                 if (!$group) {
-                    throw new ObjectDoesNotExist("Could not fetch eZ Content Class Group with ID '$group'");
+                    throw new ObjectDoesNotExist("Could not fetch eZ Content Class Group with ID '$groupItem'");
                 }
+                $groupId = $group->attribute('id');
             } else {
-                $group = \eZContentClassGroup::fetchByName($group);
+                $group = eZContentClassGroup::fetchByName($groupItem);
                 if (!$group) {
-                    throw new ObjectDoesNotExist("Could not fetch eZ Content Class Group with name '$group'");
+                    throw new ObjectDoesNotExist("Could not fetch eZ Content Class Group with name '$groupItem'");
                 }
+                $groupId = $group->attribute('id');
             }
-            $groupId = $group->attribute('id');
 
             if ($remove) {
                 eZContentClassClassGroup::removeGroup(
