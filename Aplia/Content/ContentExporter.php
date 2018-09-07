@@ -270,9 +270,19 @@ class ContentExporter
             return;
         }
         if (!isset($this->objectMap[$objectId])) {
-            $this->addObject($node->object());
+            $contentObject = $node->object();
+            $this->addObject($contentObject);
+            $this->objectMap[$objectId]['locations'][$nodeId] = $this->exportNode($node);
+
+            foreach ($contentObject->assignedNodes() as $assignedNode) {
+                $assignedNodeId = $assignedNode->attribute('node_id');
+                if (!isset($this->objectMap[$objectId]['locations'][$assignedNodeId])) {
+                    $this->addNode($assignedNode);
+                }
+            }
+        } else {
+            $this->objectMap[$objectId]['locations'][$nodeId] = $this->exportNode($node);
         }
-        $this->objectMap[$objectId]['locations'][$nodeId] = $this->exportNode($node);
     }
 
     /**
