@@ -515,6 +515,28 @@ class ContentImporter
             $objectData['uuid'] = $newData['uuid'];
         }
 
+        // Remap main node
+        $mainNodeUuid = Arr::get(Arr::get($objectData, 'main_node'), 'uuid');
+        if ($mainNodeUuid && isset($this->nodeUuidMap[$mainNodeUuid])) {
+            $newMainNodeUuid = $this->nodeUuidMap[$mainNodeUuid];
+            if ($this->verbose) {
+                echo "Object with UUID $uuid, main node UUID remapped from $mainNodeUuid to $newMainNodeUuid\n";
+            }
+            $objectData['main_node']['uuid'] = $newMainNodeUuid;
+        }
+
+        // Remap owner
+        $owner = Arr::get($objectData, 'owner');
+        $ownerUuid = Arr::get($owner, 'uuid');
+        if ($ownerUuid && isset($this->nodeUuidMap[$ownerUuid])) {
+            $newOwnerUuid = $this->nodeUuidMap[$ownerUuid];
+            $ownerName = Arr::get($owner, 'name', '<no-name>');
+            if ($this->verbose) {
+                echo "Object with UUID $uuid, owner UUID (name=${ownerName}) remapped from $ownerUuid to $newOwnerUuid\n";
+            }
+            $objectData['owner']['uuid'] = $newOwnerUuid;
+        }
+
         $locations = Arr::get($objectData, 'locations');
         if ($locations) {
             foreach ($locations as $idx => $location) {
@@ -1162,6 +1184,12 @@ class ContentImporter
             'original_uuid' => $objectData['uuid'],
             'original_section_identifier' => Arr::get($objectData, 'section_identifier'),
         );
+        $preOwner = array(
+            'original_uuid' => Arr::get(Arr::get($objectData, 'owner'), 'uuid'),
+        );
+        $preMain = array(
+            'original_uuid' => Arr::get(Arr::get($objectData, 'main_node'), 'uuid'),
+        );
         $preLocations = array();
         unset($objectData['action_update_object']);
         unset($objectData['update_attributes']);
@@ -1174,7 +1202,7 @@ class ContentImporter
             }
         }
         $mainNodeUuid = Arr::get(Arr::get($objectData, 'main_node'), 'uuid');
-        $this->objectIndex[$uuid] = array(
+        $objectEntry = array(
             'uuid' => $uuid,
             'status' => 'new',
             'class_identifier' => Arr::get($objectData, 'class_identifier'),
@@ -1189,9 +1217,16 @@ class ContentImporter
             'translations' => Arr::get($objectData, 'translations'),
             'attributes' => Arr::get($objectData, 'attributes'),
             'main_node_uuid' => $mainNodeUuid,
+            'original_main_node_uuid' => $preMain['original_uuid'],
             // Locations is an array of uuid that point to the nodeIndex
             'locations' => array(),
         );
+        if (!$objectEntry['owner'] && $objectEntry['owner']['original_uuid']) {
+            $objectEntry['owner'] = array();
+        }
+        $objectEntry['owner']['original_uuid'] = $preOwner['original_uuid'];
+        $this->objectIndex[$uuid] = $objectEntry;
+
         $this->objectIndex[$uuid] = array_merge($this->objectIndex[$uuid], $preData);
         if (isset($objectData['update_attributes'])) {
             $this->objectIndex[$uuid]['update_attributes'] = $objectData['update_attributes'];
