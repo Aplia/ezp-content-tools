@@ -1127,8 +1127,8 @@ class ContentObject
                         $node->updateSubTreePath();
                     }
                     $modifiedNodes[] = $node;
-                    $this->locations[$idx]['node'] = $node;
-                    $this->locations[$idx]['status'] = 'nop';
+                    $this->_locations[$idx]['node'] = $node;
+                    $this->_locations[$idx]['status'] = 'nop';
                 }
             }
 
