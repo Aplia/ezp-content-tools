@@ -12,10 +12,15 @@ use Aplia\Content\ContentObject;
 use eZContentClass;
 use eZContentClassGroup;
 use eZContentClassClassGroup;
+use eZContentObject;
 use eZContentObjectTreeNode;
+use eZINI;
 
 /**
  * Wrapper around eZContentClass to make it easier to create and modify content classes.
+ * 
+ * Ownership can be modified with 'ownerId', 'ownerUuid' or 'ownerIdentifier' parameter which
+ * references the user object that should own it.
  * 
  * @property $contentClass The eZContentClass object that is being referenced or created
  * @property $attributes All defined attributes for new class or existing attributs for existing class.
@@ -35,6 +40,12 @@ class ContentType
     public $sortOrder;
     public $language = false;
     public $groups = array();
+    /**
+     * Set a new owner for content class, or null to leave.
+     * 
+     * Owner is an ID of user object.
+     */
+    public $ownerId;
     /**
      * Controls whether existing groups are removed before adding new ones.
      */
@@ -126,6 +137,36 @@ class ContentType
             if (isset($fields['version'])) {
                 $this->version = $fields['version'];
             }
+            if (isset($fields['ownerId'])) {
+                $this->ownerId = $fields['ownerId'];
+                if ($this->ownerId) {
+                    $ownerObject = eZContentObject::fetch($this->ownerId, false);
+                    if (!$ownerObject) {
+                        throw new ObjectDoesNotExist("Owner was specified with ID " . $this->ownerId . " but the content-object does not exist");
+                    }
+                }
+            } else if (isset($fields['ownerUuid'])) {
+                $ownerUuid = $fields['ownerUuid'];
+                if ($ownerUuid) {
+                    $ownerObject = eZContentObject::fetchByRemoteID($ownerUuid, false);
+                    if (!$ownerObject) {
+                        throw new ObjectDoesNotExist("Owner was specified with UUID $ownerUuid but the content-object does not exist");
+                    }
+                    $this->ownerId = $ownerObject['id'];
+                }
+            } else if (isset($fields['ownerIdentifier'])) {
+                $ownerIdentifier = $fields['ownerIdentifier'];
+                // Support mapping 'admin' user to what is stored in site.ini
+                $siteIni = eZINI::instance();
+                if ($ownerIdentifier === 'admin') {
+                    $this->ownerId = $siteIni->variable('UserSettings', 'UserCreatorID');
+                } else if ($ownerIdentifier === 'anon') {
+                    $this->ownerId = $siteIni->variable('UserSettings', 'AnonymousUserID');
+                } else {
+                    throw new ObjectDoesNotExist("Owner was specified with identifier '${ownerIdentifier}' but no user is known with the identifier");
+                }
+            }
+    
             // Sorting is specified as a single string (Django style) or as two separate fields.
             if (isset($fields['sortBy'])) {
                 $sortBy = $fields['sortBy'];
@@ -344,6 +385,13 @@ class ContentType
             'always_available' => $this->alwaysAvailable,
             'version' => $this->version,
         );
+        // Update owner if specified
+        $ownerId = false;
+        if ($this->ownerId !== null) {
+            $fields['creator_id'] = $this->ownerId;
+            $fields['modifier_id'] = $this->ownerId;
+            $ownerId = $this->ownerId;
+        }
         if ($this->sortField !== null) {
             $fields['sort_field'] = $this->sortField;
         }
@@ -372,7 +420,7 @@ class ContentType
             }
         }
         $language = $this->language;
-        $this->_contentClass = eZContentClass::create(false, $fields, $language);
+        $this->_contentClass = eZContentClass::create($ownerId, $fields, $language);
         $this->_contentClass->setName($this->name, $language);
         if ($this->description !== null) {
             $this->_contentClass->setDescription($this->description, $language);
@@ -547,6 +595,11 @@ class ContentType
         if ($this->sortOrder !== null) {
             $contentClass->setAttribute('sort_order', $this->sortOrder);
             $isDirty = true;
+        }
+        // Update owner if specified
+        if ($this->ownerId !== null) {
+            $contentClass->setAttribute('creator_id', $this->ownerId);
+            $contentClass->setAttribute('modifier_id', $this->ownerId);
         }
 
         $this->sortField = null;

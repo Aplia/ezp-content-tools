@@ -2,6 +2,14 @@
 
 Changelog for the `content-tools` package.
 
+## 1.5.1
+
+- Relations on content object are now imported.
+- Support for setting owner on content classes, specifiy ownerId,
+  ownerUuid or ownerIdentifier field.
+- Tree node 1 is now considered tree identifier 'top'
+- Fixed tree identifier in dump_content.
+- Fixed issues with creating/removing class groups.
 
 ## 1.5
 

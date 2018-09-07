@@ -168,6 +168,20 @@ foreach ($identifiers as $identifier) {
         'alwaysAvailable' => $contentClass->attribute('always_available') ? true : false,
         'sortBy' => ContentType::encodeSortBy($contentClass->attribute('sort_field'), $contentClass->attribute('sort_order')),
     );
+    $owner = $contentClass->creator();
+    if ($owner) {
+        $siteIni = eZINI::instance();
+        if ($siteIni->variable('UserSettings', 'UserCreatorID') == $owner->attribute('contentobject_id')) {
+            $fields['ownerIdentifier'] = 'admin';
+        } else if ($siteIni->variable('UserSettings', 'AnonymousUserID') == $owner->attribute('contentobject_id')) {
+            $fields['ownerIdentifier'] = 'anon';
+        } else {
+            $ownerObject = $owner->contentObject();
+            if ($ownerObject) {
+                $fields['ownerUuid'] = $ownerObject->remoteID();
+            }
+        }
+    }
     $fieldsRepr = indentTextLines(var_export($fields, true), 8, false);
     $typeVar = "\$" . underscoreToCamelCase($identifier . "_class");
     $attributes = $type->attributes;
