@@ -1287,7 +1287,7 @@ class ContentObject
                 $isHidden = false;
                 $isInvisible = true;
             } else {
-                throw ValueError("Visibility for node " . $node->attribute('remote_id') . " has unknown type '" . $location['visibility'] . "'");
+                throw new ValueError("Visibility for node " . $node->attribute('remote_id') . " has unknown type '" . $location['visibility'] . "'");
             }
             if ($isHidden != (bool)$node->attribute('is_hidden') || $isInvisible != (bool)$node->attribute('is_invisible')) {
                 $node->setAttribute('is_hidden', $isHidden);
