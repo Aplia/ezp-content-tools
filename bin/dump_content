@@ -404,7 +404,7 @@ EOT;
 
             if ($objectAttributes) {
                 foreach ($objectAttributes as $attrIdentifier => $attribute) {
-                    if ($attribute) {
+                    if ($attribute && (isset($attribute['found']) ? $attribute['found'] : true)) {
                         echo "->setAttribute(" . var_export($attrIdentifier, true) . ", " . var_export($attribute, true) . ")\n";
                     }
                 }
