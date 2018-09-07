@@ -1207,14 +1207,14 @@ class ContentObject
         $db->begin();
         // If always available is to be changed update object and nods
         if ($this->alwaysAvailable !== null) {
-            if ($alwaysAvailable) {
+            if ($this->alwaysAvailable) {
                 $contentObject->setAlwaysAvailableLanguageID($languageCode ? $languageCode : $contentObject->currentLanguage());
             } else {
                 $contentObject->setAlwaysAvailableLanguageID(false);
             }
             $contentObject->sync(array('language_mask'));
             if ($this->contentVersion) {
-                if ($alwaysAvailable) {
+                if ($this->alwaysAvailable) {
                     $this->contentVersion->setAlwaysAvailableLanguageID($languageCode ? $languageCode : $this->contentVersion->initialLanguageCode());
                 } else {
                     $this->contentVersion->clearAlwaysAvailableLanguageID();
@@ -1277,7 +1277,7 @@ class ContentObject
             $changes[] = 'priority';
         }
         if (isset($location['visibility'])) {
-            if ($location['visibility'] === 'visibile') {
+            if ($location['visibility'] === 'visible') {
                 $isHidden = false;
                 $isInvisible = false;
             } else if ($location['visibility'] === 'hidden') {
