@@ -383,20 +383,70 @@ $object->setAttribute('image', new Aplia\Content\HttpFile('portrait_image'));
 
 ## Configuration for import
 
-The cojntent importer supports using a configuration file to define
+The content importer supports using a configuration file to define
 mapping of data and defining transformation code to be run.
 
-### Object/ParentMap
+### Transformation classes
 
-ParentMap allows for remapping the parents of imported locations to
-a new parent. It maps from the original UUID to a new UUID
+The import system supports custom transformation classes, these are
+classes that are instantiated with the importer as the first parameter
+and the ini file as second.
+
+They should then contain methods for transform import data into new
+data. The specifics are explained in subsequent sections.
+
+### NodeMap
+
+NodeMap allows for remapping the uuid of imported nodes to
+a new uuid. It maps from the original UUID to a new UUID
 
 e.g.
 
 ```
 [Object]
-ParentMap[16a72100ab6e3831dd0dffb10ef22902]=15ab238880ef4e989ab15823c906c005
+NodeMap[16a72100ab6e3831dd0dffb10ef22902]=15ab238880ef4e989ab15823c906c005
 ```
+
+This is used for nodes of objects, for parent uuids and owner uuid.
+A typical use case is to relocate a parent node to a new location.
+
+### ObjectMap
+
+ObjectMap allows for remapping the uuid of imported objects to
+a new uuid. It maps from the original UUID to a new UUID.
+
+e.g.
+
+```
+[Object]
+ObjectMap[c1426628bb809712ac78e8527ef93739]=15ab238880ef4e989ab15823c906c005
+```
+
+### Object transformation
+
+Object import data may be transformed before the import system takes
+care of it. This can either be done on a specific object uuid, class identifier
+or for all objects.
+
+To transform a single object specify `TransformByUuid`.
+
+```
+TransformByUuid[c1426628bb809712ac78e8527ef93739]=FrontpageTransformation
+```
+
+To transform objects of given class specify `TransformByClass`.
+
+```
+TransformByClass[user]=UserTransform
+```
+
+Transformation for all objects are specified with `Transform`
+```
+Transform[]=GenericTransform
+```
+
+All object transformation classes must implement the ContentObjectTransformation
+interface.
 
 ## Content input handler
 

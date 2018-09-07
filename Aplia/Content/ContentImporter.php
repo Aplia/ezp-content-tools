@@ -45,12 +45,18 @@ class ContentImporter
     // Maps content content-class identifier to a new data structure, for instance to use an existing content content-class
     public $mapClass = array();
 
+    // Maps content object uuid to an object/class that will transform the content
+    public $transformObjectByUuid = array();
+    // Maps content object class identifier to an object/class that will transform the content
+    public $transformObjectByClass = array();
+    // Transformations to run all content objects
+    public $transformObjects = array();
     // Maps an object UUID to a new object structure, the structure either has the
     // object data for the replacement object, or has 'removed' => true to remove it.
-    // This is for ownership and relations.
-    public $objectRemapped = array();
-    // Maps parents from an old uuid to a new
-    public $parentUuidMap = array();
+    // This is used for nodes, parents, ownership and relations.
+    public $mapObject = array();
+    // Maps nodes from an old uuid to a new
+    public $nodeUuidMap = array();
     
     // property $sectionIndex = array();
     // property $languageIndex = array();
@@ -294,20 +300,71 @@ class ContentImporter
                 if (!class_exists($className)) {
                     throw new ImportDenied("Transform class $className used for content class $newClass does not exist");
                 }
-                $this->transformClass[$newClass] = new $className($ini);
+                $this->transformClass[$newClass] = new $className($this, $ini);
             }
         }
 
-        // Mapping for parent, from old uuid to new uuid
-        if ($ini->hasVariable('Object', 'ParentMap')) {
-            $parentMaps = $ini->variable('Object', 'ParentMap');
-            foreach ($parentMaps as $parentUuid => $newParentUuid) {
-                $parent = eZContentObjectTreeNode::fetchByRemoteID($newParentUuid);
-                if (!$parent) {
-                    throw new ImportDenied("Transform of parent UUID from $parentUuid to $newParentUuid not possible as the new object does not exist");
+        /////////////////////////////////////////////
+        // Objects and nodes
+        /////////////////////////////////////////////
+
+        // Mapping for node, from old uuid to new uuid
+        if ($ini->hasVariable('Object', 'NodeMap')) {
+            $nodeMaps = $ini->variable('Object', 'NodeMap');
+            foreach ($nodeMaps as $importNodeUuid => $remappedNodeUuid) {
+                $node = eZContentObjectTreeNode::fetchByRemoteID($remappedNodeUuid);
+                if (!$node) {
+                    throw new ImportDenied("Transform of parent UUID from $importNodeUuid to $remappedNodeUuid not possible as the new object does not exist");
                 }
-                $this->parentUuidMap[$parentUuid] = $newParentUuid;
-                $this->addExistingNode($parent, $newParentUuid);
+                $this->nodeUuidMap[$importNodeUuid] = $remappedNodeUuid;
+                $this->addExistingNode($node, $remappedNodeUuid);
+            }
+        }
+
+        // Handle object mapping/transforms
+        if ($ini->hasVariable('Object', 'ObjectMap')) {
+            $objectMap = $ini->variable('Object', 'ObjectMap');
+            foreach ($objectMap as $importUuid => $remappedUuid) {
+                $contentObject = \eZContentObject::fetchByRemoteID($remappedUuid);
+                if (!$contentObject) {
+                    throw new ImportDenied("Mapping of content object from $importUuid to $remappedUuid not possible as $remappedUuid does not exist");
+                }
+                $this->mapObject[$importUuid] = array(
+                    'uuid' => $remappedUuid,
+                    'name' => $contentObject->attribute('name'),
+                    'class_identifier' => $contentObject->contentClassIdentifier(),
+                    'section_identifier' => $contentObject->sectionIdentifier(),
+                );
+            }
+        }
+
+        if ($ini->hasVariable('Object', 'TransformByUuid')) {
+            $transforms = $ini->variable('Object', 'TransformByUuid');
+            foreach ($transforms as $importUuid => $className) {
+                if (!class_exists($className)) {
+                    throw new ImportDenied("Transform class $className used for content object ${importUuid} does not exist");
+                }
+                $this->transformObjectByUuid[$importUuid] = new $className($this, $ini);
+            }
+        }
+
+        if ($ini->hasVariable('Object', 'TransformByClass')) {
+            $transforms = $ini->variable('Object', 'TransformByClass');
+            foreach ($transforms as $importClass => $className) {
+                if (!class_exists($className)) {
+                    throw new ImportDenied("Transform class $className used for content objects with class '${importClass}' does not exist");
+                }
+                $this->transformObjectByClass[$importClass] = new $className($this, $ini);
+            }
+        }
+
+        if ($ini->hasVariable('Object', 'Transform')) {
+            $transforms = $ini->variable('Object', 'Transform');
+            foreach ($transforms as $className) {
+                if (!class_exists($className)) {
+                    throw new ImportDenied("Transform class $className used for content objects does not exist");
+                }
+                $this->transformObjects[] = new $className($this, $ini);
             }
         }
     }
@@ -427,6 +484,127 @@ class ContentImporter
             }
         }
         return $identifier;
+    }
+
+    /**
+     * Transforms content object data by applying remapping of
+     * object uuid and node uuid as well running any Transformation
+     * classes.
+     * 
+     * Returns the transformed object data.
+     * 
+     * @return array
+     */
+    public function transformContentObject($objectData)
+    {
+        $uuid = $objectData['uuid'];
+        $identifier = $objectData['class_identifier'];
+
+        // See if object needs to be remapped
+        if (isset($this->mapObject[$uuid])) {
+            $newData = $this->mapObject[$uuid];
+            if ($this->verbose) {
+                echo "Object $uuid remapped to ${newData['uuid']}\n";
+            }
+            if (isset($newData['removed'])) {
+                $objectData['removed'] = true;
+            }
+            if (isset($newData['id'])) {
+                $objectData['object_id'] = $newData['id'];
+            }
+            $objectData['uuid'] = $newData['uuid'];
+        }
+
+        $locations = Arr::get($objectData, 'locations');
+        if ($locations) {
+            foreach ($locations as $idx => $location) {
+                $nodeUuid = $location['uuid'];
+                $parentUuid = $location['parent_node_uuid'];
+                // Store original values in separate fields
+                $preLocations[$idx] = array(
+                    'original_uuid' => $nodeUuid,
+                    'original_parent_node_uuid' => $parentUuid,
+                );
+                // Then see if parent is remapped
+                if (isset($this->nodeUuidMap[$parentUuid])) {
+                    $newParentUuid = $this->nodeUuidMap[$parentUuid];
+                    if ($this->verbose) {
+                        echo "Object with UUID $uuid, location $nodeUuid remapped parent from $parentUuid to $newParentUuid\n";
+                    }
+                    $parentUuid = $newParentUuid;
+                    $objectData['locations'][$idx]['parent_node_uuid'] = $parentUuid;
+                }
+                // And if node uuid needs remap
+                if (isset($this->nodeUuidMap[$nodeUuid])) {
+                    $newNodeUuid = $this->nodeUuidMap[$nodeUuid];
+                    if ($this->verbose) {
+                        echo "Object with UUID $uuid, location remapped UUID from $nodeUuid to $newNodeUuid\n";
+                    }
+                    $objectData['locations'][$idx]['uuid'] = $newNodeUuid;
+                }
+            }
+        }
+
+        if (isset($this->transformObjectByUuid[$uuid])) {
+            $newData = $this->transformObjectByUuid[$uuid]->transformContentObject($objectData);
+            if ($newData) {
+                if ($newData['uuid'] !== $objectData['uuid'] &&
+                    !isset($this->mapObject[$objectData['uuid']])) {
+                    // Store remapping for quicker lookups later on
+                    $this->mapObject[$objectData['uuid']] = array(
+                        'uuid' => $newData['uuid'],
+                        'name' => Arr::get($newData, 'name'),
+                        'class_identifier' => Arr::get($newData, 'class_identifier'),
+                        'section_identifier' => Arr::get($newData, 'section_identifier'),
+                    );
+                    if (isset($newData['removed'])) {
+                        $this->mapObject[$objectData['uuid']]['removed'] = true;
+                    }
+                }
+                $objectData = $newData;
+            }
+        } else if (isset($this->transformObjectByClass[$identifier])) {
+            $newData = $this->transformObjectByClass[$identifier]->transformContentObject($objectData);
+            if ($newData) {
+                if ($newData['uuid'] !== $objectData['uuid'] &&
+                    !isset($this->mapObject[$objectData['uuid']])) {
+                    // Store remapping for quicker lookups later on
+                    $this->mapObject[$objectData['uuid']] = array(
+                        'uuid' => $newData['uuid'],
+                        'name' => Arr::get($newData, 'name'),
+                        'class_identifier' => Arr::get($newData, 'class_identifier'),
+                        'section_identifier' => Arr::get($newData, 'section_identifier'),
+                    );
+                    if (isset($newData['removed'])) {
+                        $this->mapObject[$objectData['uuid']]['removed'] = true;
+                    }
+                }
+                $objectData = $newData;
+            }
+        }
+
+        if ($this->transformObjects) {
+            foreach ($this->transformObjects as $transformObject) {
+                $newData = $transformObject->transformContentObject($objectData);
+                if ($newData) {
+                    if ($newData['uuid'] !== $objectData['uuid'] &&
+                        !isset($this->mapObject[$objectData['uuid']])) {
+                        // Store remapping for quicker lookups later on
+                        $this->mapObject[$objectData['uuid']] = array(
+                            'uuid' => $newData['uuid'],
+                            'name' => Arr::get($newData, 'name'),
+                            'class_identifier' => Arr::get($newData, 'class_identifier'),
+                            'section_identifier' => Arr::get($newData, 'section_identifier'),
+                        );
+                        if (isset($newData['removed'])) {
+                            $this->mapObject[$objectData['uuid']]['removed'] = true;
+                        }
+                    }
+                    $objectData = $newData;
+                }
+            }
+        }
+        return $objectData;
     }
 
     public function importFile($fileData)
@@ -908,6 +1086,68 @@ class ContentImporter
         return count($resultArray) == 1;
     }
 
+    /**
+     * Helper method for getting the attribute by identifier from the object data.
+     * The attribute is fetched either from translated attributes or non-translated.
+     * 
+     * @param $data Object data
+     * @param $identifier Identifier for attribute to fetch
+     * @return any The content for the attribute or null if it does not exist
+     */
+    public function getObjectAttribute($data, $identifier)
+    {
+        foreach ($data['translations'] as $lang => $langData) {
+            if (isset($data['translations'][$lang]['attributes'][$identifier])) {
+                return $data['translations'][$lang]['attributes'][$identifier];
+            }
+        }
+        if (isset($data['attributes'][$identifier])) {
+            return $data['attributes'][$identifier];
+        }
+    }
+
+    /**
+     * Helper method for setting the content of an attribute in the object data.
+     * The attribute is set either in the translated attributes or non-translated.
+     * 
+     * @param $data Object data to modfiy
+     * @param $identifier Identifier for attribute to modify
+     * @param $value The value to set as attribute content
+     */
+    public function setObjectAttribute(&$data, $identifier, $value)
+    {
+        if (isset($data['attributes'][$identifier])) {
+            $data['attributes'][$identifier] = $value;
+            return;
+        }
+        foreach ($data['translations'] as $lang => $langData) {
+            if (isset($data['translations'][$lang]['attributes'][$identifier])) {
+                $data['translations'][$lang]['attributes'][$identifier] = $value;
+                return;
+            }
+        }
+    }
+
+    /**
+     * Helper method for adding a new attribute to the object data.
+     * If $language is false the attribute is added to non-translatable
+     * attributes, otherwise it is added to the attributes in the specified
+     * language.
+     * 
+     * @param $data Object data to modfiy
+     * @param $identifier Identifier for attribute to modify
+     * @param $language string with locale or false
+     * @param $value The value to set as attribute content
+     */
+    public function addObjectAttribute(&$data, $identifier, $language, $value)
+    {
+        if (!$language) {
+            $data['attributes'][$identifier] = $value;
+            return;
+        }
+        $data['translations'][$language]['attributes'][$identifier] = $value;
+    }
+
     public function importContentObject($objectData)
     {
         if (!isset($objectData['uuid'])) {
@@ -916,8 +1156,17 @@ class ContentImporter
         if (!isset($objectData['class_identifier'])) {
             throw new TypeError("Key 'class_identifier' missing from content-object record");
         }
-        $uuid = $objectData['uuid'];
         // TODO: Handle remapping/transforms
+        $uuid = $objectData['uuid'];
+        $preData = array(
+            'original_uuid' => $objectData['uuid'],
+            'original_section_identifier' => Arr::get($objectData, 'section_identifier'),
+        );
+        $preLocations = array();
+        unset($objectData['action_update_object']);
+        unset($objectData['update_attributes']);
+        $objectData = $this->transformContentObject($objectData);
+        $uuid = $objectData['uuid'];
         if (isset($this->objectIndex[$uuid])) {
             if ($this->verbose) {
                 echo "Content-object with uuid $uuid already exists, skipping\n";
@@ -929,7 +1178,9 @@ class ContentImporter
             'uuid' => $uuid,
             'status' => 'new',
             'class_identifier' => Arr::get($objectData, 'class_identifier'),
+            'original_uuid' => Arr::get($objectData, 'original_uuid'),
             'original_id' => Arr::get($objectData, 'object_id'),
+            'original_section_identifier' => Arr::get($objectData, 'original_section_identifier'),
             'owner' => Arr::get($objectData, 'owner'),
             'section_identifier' => Arr::get($objectData, 'section_identifier'),
             'is_always_available' => Arr::get($objectData, 'is_always_available'),
@@ -941,6 +1192,13 @@ class ContentImporter
             // Locations is an array of uuid that point to the nodeIndex
             'locations' => array(),
         );
+        $this->objectIndex[$uuid] = array_merge($this->objectIndex[$uuid], $preData);
+        if (isset($objectData['update_attributes'])) {
+            $this->objectIndex[$uuid]['update_attributes'] = $objectData['update_attributes'];
+        }
+        if (isset($objectData['action_update_object'])) {
+            $this->objectIndex[$uuid]['action_update_object'] = $objectData['action_update_object'];
+        }
         if ($this->objectIndex[$uuid]['translations']) {
             $translations = array_keys($this->objectIndex[$uuid]['translations']);
             $mainLanguage = array_shift($translations);
@@ -981,16 +1239,6 @@ class ContentImporter
             foreach ($locations as $idx => $location) {
                 $nodeUuid = $location['uuid'];
                 $parentUuid = $location['parent_node_uuid'];
-                // See if parent is remapped
-                if (isset($this->parentUuidMap[$parentUuid])) {
-                    $newParentUuid = $this->parentUuidMap[$parentUuid];
-                    if ($this->verbose) {
-                        echo "Object location $nodeUuid remapped parent from $parentUuid to $newParentUuid\n";
-                    }
-                    $parentUuid = $newParentUuid;
-                    $location['parent_node_uuid'] = $parentUuid;
-                    $this->objectIndex['locations'][$idx]['parent_node_uuid'] = $parentUuid;
-                }
                 if (isset($this->nodeIndex[$nodeUuid])) {
                     if ($this->verbose) {
                         echo "Content-node with uuid $nodeUuid already exists, skipping\n";
@@ -1004,6 +1252,8 @@ class ContentImporter
                     'status' => 'new',
                     'parent_uuid' => $parentUuid,
                     'object_uuid' => $uuid,
+                    'original_uuid' => Arr::get($location, 'original_uuid'),
+                    'original_parent_node_uuid' => Arr::get($location, 'original_parent_node_uuid'),
                     'original_node_id' => $originalNodeId,
                     'sort_by' => Arr::get($location, 'sort_by'),
                     'priority' => Arr::get($location, 'priority'),
@@ -1012,6 +1262,10 @@ class ContentImporter
                     'url_alias' => Arr::get($location, 'url_alias'),
                     'children' => array(),
                 );
+                // Fill in pre-transform information
+                if (isset($preLocations[$idx])) {
+                    $this->nodeIndex[$nodeUuid] = array_merge($this->nodeIndex[$nodeUuid], $preLocations[$idx]);
+                }
                 $node = eZContentObjectTreeNode::fetchByRemoteID($nodeUuid);
                 if ($node) {
                     // If node already exists then only update it
@@ -1215,6 +1469,10 @@ class ContentImporter
             echo "Updating content\n";
         }
         // Now go over all objects (via nodes) and fill in information on object and attributes.
+        // TODO: Instead of iterating over the node structure again for updating nodes/objects
+        // the createNodeStructure should add all objects that are created/found to a new
+        // queue, then iterate over that and simply update the object with locations
+        // Avoids the need to check against duplicate updates
         foreach ($this->nodeStartIndex as $nodeUuidList) {
             foreach ($nodeUuidList as $nodeUuid) {
                 $nodeData = $this->nodeIndex[$nodeUuid];
@@ -1228,19 +1486,32 @@ class ContentImporter
      */
     public function verifyNodeContent($nodeData)
     {
+        if (isset($this->objectIndex[$nodeData['object_uuid']])) {
+            $objectData = $this->objectIndex[$nodeData['object_uuid']];
+            $objectName = Arr::get($objectData, 'main_name', "<no-name>");
+            $objectUuid = $objectData['uuid'];
+        } else {
+            $object = eZContentObject::fetchByRemoteID($nodeData['object_uuid']);
+            if ($object) {
+                $objectName = $object->attribute('name');
+            } else {
+                $objectName = "<no-name>";
+            }
+            $objectUuid = null;
+        }
         if ($nodeData['status'] === 'new' || $nodeData['status'] === 'created') {
             if ($this->verbose) {
-                echo "Verifying node ", $nodeData['uuid'], "\n";
+                echo "Verifying node ${nodeData['uuid']} (name=${objectName})\n";
             }
             $objectData = $this->objectIndex[$nodeData['object_uuid']];
             $this->verifyObjectContent($objectData);
         } else if ($nodeData['status'] === 'present') {
             if ($this->verbose) {
-                echo "Node ", $nodeData['uuid'], " already exists\n";
+                echo "Node ${nodeData['uuid']} (name=${objectName}) already exists\n";
             }
         } else if ($nodeData['status'] === 'reference') {
             if ($this->verbose) {
-                echo "Node ", $nodeData['uuid'], " is a reference\n";
+                echo "Node ${nodeData['uuid']} (name=${objectName}) is a reference\n";
             }
         } else {
             throw new ImportDenied("Reached node with unknown status='" . $nodeData['status'] . "'");
@@ -1279,17 +1550,17 @@ class ContentImporter
         if (isset($objectData['owner']['uuid']) && $objectData['owner']['uuid']) {
             $removeOwner = false;
             $ownerUuid = $objectData['owner']['uuid'];
-            if (isset($this->objectRemapped[$ownerUuid])) {
-                if (isset($this->objectRemapped[$ownerUuid]['removed'])) {
+            if (isset($this->mapObject[$ownerUuid])) {
+                if (isset($this->mapObject[$ownerUuid]['removed'])) {
                     $this->objectIndex[$objectUuid]['owner'] = null;
                     $removeOwner = true;
                 } else {
                     $objectData['owner'] = $this->objectIndex[$objectUuid]['owner'] = array(
-                        'uuid' => $this->objectRemapped[$ownerUuid]['uuid'],
-                        'id' => Arr::get($this->objectRemapped[$ownerUuid], 'id'),
-                        'name' => Arr::get($this->objectRemapped[$ownerUuid], 'name'),
+                        'uuid' => $this->mapObject[$ownerUuid]['uuid'],
+                        'id' => Arr::get($this->mapObject[$ownerUuid], 'id'),
+                        'name' => Arr::get($this->mapObject[$ownerUuid], 'name'),
                     );
-                    $ownerUuuid = $this->objectRemapped[$ownerUuid]['uuid'];
+                    $ownerUuuid = $this->mapObject[$ownerUuid]['uuid'];
                 }
             }
             if (!$removeOwner) {
@@ -1318,7 +1589,7 @@ class ContentImporter
                 $this->objectIndex[$objectUuid]['owner'] = null;
                 // Mark the object uuid as removed, any future entries with the same owner
                 // will automatically remove it
-                $this->objectRemapped[$ownerUuid] = array(
+                $this->mapObject[$ownerUuid] = array(
                     'removed' => true,
                 );
             }
@@ -1561,13 +1832,19 @@ class ContentImporter
             $objectName = Arr::get($objectData, 'main_name', "<no-name>");
             $objectUuid = $objectData['uuid'];
         } else {
-            $objectName = "<no-name2>";
+            $object = eZContentObject::fetchByRemoteID($nodeData['object_uuid']);
+            if ($object) {
+                $objectName = $object->attribute('name');
+            } else {
+                $objectName = "<no-name>";
+            }
             $objectUuid = null;
         }
         if ($nodeData['status'] === 'new') {
             $nodeUuid = $nodeData['uuid'];
+            $parentUuid = $nodeData['parent_uuid'];
             if ($this->verbose) {
-                echo "Creating node skeleton ", $nodeData['uuid'], ", name='", $objectName, "'\n";
+                echo "Creating node skeleton ", $nodeData['uuid'], " (name='", $objectName, "', parent=$parentUuid)\n";
             }
             $translations = $objectData['translations'];
             $languages = array_keys($translations);
@@ -1600,17 +1877,28 @@ class ContentImporter
                 $sectionIdentifier = $objectData['section_identifier'];
                 $sectionIdentifier = $this->remapSectionIdentifier($sectionIdentifier);
             }
-            $objectManager = new ContentObject(array(
+            $objectFields = array(
                 'uuid' => $objectUuid,
                 'identifier' => $objectData['class_identifier'],
                 'language' => $mainLanguage,
-                'alwaysAvailable' => isset($objectData['is_always_available']) ? $objectData['is_always_available'] : null,
-                'sectionIdentifier' => $sectionIdentifier,
                 // Do not create url alias yet
                 'updateNodePath' => false,
-                'states' => $states,
-                'publishedDate' => $publishedDate,
-            ));
+            );
+            $updateTypes = isset($objectData['action_update_object']) ? $objectData['action_update_object'] : null;
+            if (!$updateTypes) {
+                $updateTypes = array('object', 'attribute', 'location');
+            }
+            // Check if object data should be updated or not, a transformation may have stopped the update
+            // Note: Even if update is off, the call to update() below needs to happen to sync the node
+            if (in_array('object', $updateTypes)) {
+                $objectFields = array_merge($objectFields, array(
+                    'alwaysAvailable' => isset($objectData['is_always_available']) ? $objectData['is_always_available'] : null,
+                    'sectionIdentifier' => $sectionIdentifier,
+                    'states' => $states,
+                    'publishedDate' => $publishedDate,
+                ));
+            }
+            $objectManager = new ContentObject($objectFields);
             $hasObject = false;
             if ($objectManager->exists()) {
                 $hasObject = true;
@@ -1619,7 +1907,7 @@ class ContentImporter
                 if ($hasObject) {
                     throw new ImportDenied("Tried to create object uuid=" . $objectUuid . " but it already exists");
                 }
-            } else if ($objectData['status'] === 'created') {
+            } else if ($objectData['status'] === 'created' || $objectData['status'] === 'present') {
                 $hasObject = true;
             } else {
                 $hasObject = false;
@@ -1627,8 +1915,10 @@ class ContentImporter
             $location = array(
                 'parent_uuid' => $nodeData['parent_uuid'],
                 'uuid' => $nodeUuid,
-                'is_main' => $nodeData['is_main'],
             );
+            if (isset($nodeData['is_main'])) {
+                $location['is_main'] = $nodeData['is_main'];
+            }
             if ($nodeData['sort_by']) {
                 $location['sort_by'] = $nodeData['sort_by'];
             }
@@ -1641,6 +1931,7 @@ class ContentImporter
             $objectManager->syncLocation($location);
             if ($hasObject) {
                 $objectManager->update();
+                $contentObject = $objectManager->contentObject;
                 if ($this->verbose) {
                     echo "Updated object id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), "\n";
                 }
@@ -1652,6 +1943,7 @@ class ContentImporter
                 if ($this->verbose) {
                     echo "Created object skeleton: id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), ", name='", $objectName, "'\n";
                 }
+                $this->objectIndex[$nodeData['object_uuid']]['status'] = 'created';
                 $this->importCounts['contentobject_create'] = $this->importCounts['contentobject_create'] + 1;
             }
             $nodes = $objectManager->nodes;
@@ -1668,15 +1960,15 @@ class ContentImporter
             unset($this->newObjectQueue[$objectUuid]);
         } else if ($nodeData['status'] === 'created') {
             if ($this->verbose) {
-                echo "Node ${nodeData['node_id']}, name=${objectName} has already been created\n";
+                echo "Node ${nodeData['node_id']} (name=${objectName}) has already been created\n";
             }
         } else if ($nodeData['status'] === 'present') {
             if ($this->verbose) {
-                echo "Node ${nodeData['uuid']}, name=${objectName} already exists\n";
+                echo "Node ${nodeData['uuid']} (name=${objectName}) already exists\n";
             }
         } else if ($nodeData['status'] === 'reference') {
             if ($this->verbose) {
-                echo "Node ${nodeData['uuid']}, name=${objectName} is a reference\n";
+                echo "Node ${nodeData['uuid']} (name=${objectName}) is a reference\n";
             }
         } else {
             throw new ImportDenied("Reached node with unknown status='" . $nodeData['status'] . "'");
@@ -1698,22 +1990,63 @@ class ContentImporter
         if ($nodeData['status'] === 'new') {
             throw ImportDenied("Reached a node with status 'new' while updating node content");
         }
+        $objectData = null;
+        if (isset($this->objectIndex[$nodeData['object_uuid']])) {
+            $objectData = $this->objectIndex[$nodeData['object_uuid']];
+            $objectName = Arr::get($objectData, 'main_name', "<no-name>");
+            $objectUuid = $objectData['uuid'];
+        } else {
+            $object = eZContentObject::fetchByRemoteID($nodeData['object_uuid']);
+            if ($object) {
+                $objectName = $object->attribute('name');
+            } else {
+                $objectName = "<no-name>";
+            }
+            $objectUuid = null;
+        }
+        $updateObject = false;
         if ($nodeData['status'] === 'created') {
             if ($this->verbose) {
-                echo "Updating node ", $nodeData['uuid'], "\n";
+                echo "Updating node ${nodeData['uuid']}, name=${objectName}\n";
             }
-            $objectData = $this->objectIndex[$nodeData['object_uuid']];
+            if (!$objectData) {
+                throw new ImportDenied("Reached a new node (UUID=${$nodeData['uuid']}) without any data on the object (UUID=${objectUuid})");
+            }
             $this->updateObjectContent($objectData);
+            $this->nodeIndex[$nodeData['uuid']]['status'] = 'present';
+            $updateObject = true;
         } else if ($nodeData['status'] === 'present') {
-            if ($this->verbose) {
-                echo "Node ", $nodeData['uuid'], " already exists\n";
+            if ($objectData) {
+                $objectUpdateTypes = isset($objectData['action_update_object']) ? $objectData['action_update_object'] : null;
+                if (!is_array($objectUpdateTypes)) {
+                    $objectUpdateTypes = array('object', 'attribute', 'location');
+                }
+                if ($objectData['status'] === 'new' || $objectData['status'] === 'created') {
+                    $updateObject = true;
+                }
+                else if ($objectData['status'] === 'present' && $objectUpdateTypes) {
+                    $updateObject = true;
+                }
+            }
+            if ($updateObject) {
+                if ($this->verbose) {
+                    echo "Node ${nodeData['uuid']} (name=${objectName}) already exists, but content needs update\n";
+                }
+            } else {
+                if ($this->verbose) {
+                    echo "Node ${nodeData['uuid']} (name=${objectName}) already exists, no object change\n";
+                }
             }
         } else if ($nodeData['status'] === 'reference') {
             if ($this->verbose) {
-                echo "Node ", $nodeData['uuid'], " is a reference\n";
+                echo "Node ${nodeData['uuid']} (name=${objectName}) is a reference\n";
             }
         } else {
             throw new ImportDenied("Reached node with unknown status='" . $nodeData['status'] . "'");
+        }
+
+        if ($updateObject) {
+            $this->updateObjectContent($objectData);
         }
 
         // Create child nodes
@@ -1729,6 +2062,25 @@ class ContentImporter
     public function updateObjectContent($objectData)
     {
         $objectUuid = $objectData['uuid'];
+        $updateTypes = isset($objectData['action_update_object']) ? $objectData['action_update_object'] : null;
+        if ($objectData['status'] === 'present') {
+            if (!$updateTypes) {
+                // Object has already been updated from via another location
+                if ($this->verbose) {
+                    echo "Object with UUID $objectUuid has already been updated, skipping\n";
+                }
+                return;
+            } else {
+                if ($this->verbose) {
+                    echo "Object with UUID $objectUuid exists but needs an update for " . implode(", ", $updateTypes) . "\n";
+                }
+            }
+        } else if ($objectData['status'] !== 'created') {
+            throw new ImportDenied("Tried to update object content on an object which has not been created/needs-update, status=${objectData['status']}");
+        }
+        if (!is_array($updateTypes)) {
+            $updateTypes = array('object', 'attribute', 'location');
+        }
         $translations = $objectData['translations'];
         $languages = array_keys($translations);
         if (!$languages) {
@@ -1748,39 +2100,55 @@ class ContentImporter
             'language' => $mainLanguage,
             'ownerUuid' => $ownerUuid,
         ));
+        $allowedAttributes = isset($objectData['update_attributes']) ? $objectData['update_attributes'] : null;
+        if ($allowedAttributes !== null && $this->verbose) {
+            if ($this->verbose) {
+                echo "Limiting update of object ${objectUuid} to attributes: " . implode(", ", $allowedAttributes) . "\n";
+            }
+        }
         // Update all attributes
-        $classData = $this->classIndex[$objectData['class_identifier']];
-        if (isset($objectData['attributes']) && $objectData['attributes']) {
-            foreach ($objectData['attributes'] as $identifier => $attributeData) {
-                $dataType = $classData['attributes'][$identifier]['type'];
-                $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
-                $objectManager->setAttribute($identifier, $attributeData);
+        if (in_array('attribute', $updateTypes)) {
+            $classData = $this->classIndex[$objectData['class_identifier']];
+            if (isset($objectData['attributes']) && $objectData['attributes']) {
+                foreach ($objectData['attributes'] as $identifier => $attributeData) {
+                    if ($allowedAttributes !== null && !in_array($identifier, $allowedAttributes)) {
+                        continue;
+                    }
+                    $dataType = $classData['attributes'][$identifier]['type'];
+                    $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
+                    $objectManager->setAttribute($identifier, $attributeData);
+                }
+            }
+            if (isset($translations[$mainLanguage]['attributes']) &&
+                $translations[$mainLanguage]['attributes']) {
+                foreach ($translations[$mainLanguage]['attributes'] as $identifier => $attributeData) {
+                    if ($allowedAttributes !== null && !in_array($identifier, $allowedAttributes)) {
+                        continue;
+                    }
+                    $dataType = $classData['attributes'][$identifier]['type'];
+                    $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
+                    $objectManager->setAttribute($identifier, $attributeData);
+                }
             }
         }
-        if (isset($translations[$mainLanguage]['attributes']) &&
-            $translations[$mainLanguage]['attributes']) {
-            foreach ($translations[$mainLanguage]['attributes'] as $identifier => $attributeData) {
-                $dataType = $classData['attributes'][$identifier]['type'];
-                $attributeData = $this->processAttributeData($identifier, $dataType, $attributeData);
-                $objectManager->setAttribute($identifier, $attributeData);
+        if (in_array('location', $updateTypes)) {
+            $mainUuid = null;
+            if (isset($objectData['main_node']['uuid'])) {
+                $mainUuid = $objectData['main_node']['uuid'];
             }
-        }
-        $mainUuid = null;
-        if (isset($objectData['main_node']['uuid'])) {
-            $mainUuid = $objectData['main_node']['uuid'];
-        }
-        // Now that all nodes are present the main node and visibility can be set
-        foreach ($objectData['locations'] as $locationData) {
-            $location = array(
-                'parent_uuid' => $locationData['parent_node_uuid'],
-                'uuid' => $locationData['uuid'],
-                'is_main' => $locationData['uuid'] == $mainUuid,
-                'visibility' => $locationData['visibility'],
-            );
-            if ($nodeData['priority']) {
-                $location['priority'] = $nodeData['priority'];
+            // Now that all nodes are present the main node and visibility can be set
+            foreach ($objectData['locations'] as $locationData) {
+                $location = array(
+                    'parent_uuid' => $locationData['parent_node_uuid'],
+                    'uuid' => $locationData['uuid'],
+                    'is_main' => $locationData['uuid'] == $mainUuid,
+                    'visibility' => $locationData['visibility'],
+                );
+                if ($nodeData['priority']) {
+                    $location['priority'] = $nodeData['priority'];
+                }
+                $objectManager->updateLocation($location);
             }
-            $objectManager->updateLocation($location);
         }
         $objectManager->update();
         $contentObject = $objectManager->contentObject;
@@ -1796,6 +2164,9 @@ class ContentImporter
                 'language' => $language,
             ));
             foreach ($translations[$language]['attributes'] as $identifier => $attributeData) {
+                if ($allowedAttributes !== null && !in_array($identifier, $allowedAttributes)) {
+                    continue;
+                }
                 $objectLanguageManager->setAttribute($identifier, $attributeData);
             }
             // Include locations to get all url aliases updated
@@ -1813,11 +2184,9 @@ class ContentImporter
             echo "Updated object id=", $contentObject->attribute('id'), ", uuid=", $contentObject->attribute('remote_id'), "\n";
         }
 
-        // Mark object and nodes as present
+        // Mark object as present, and stop any updates from other nodes
         $this->objectIndex[$objectUuid]['status'] = 'present';
-        foreach ($objectData['locations'] as $locationData) {
-            $this->nodeIndex[$locationData['uuid']]['status'] = 'present';
-        }
+        $this->objectIndex[$objectUuid]['action_update_object'] = array();
     }
 
     /**
