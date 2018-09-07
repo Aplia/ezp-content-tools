@@ -537,6 +537,31 @@ class ContentImporter
             $objectData['owner']['uuid'] = $newOwnerUuid;
         }
 
+        // Remap relations
+        $relations = Arr::get($objectData, 'related');
+        if ($relations) {
+            foreach ($relations as $idx => $relation) {
+                $relationUuid = Arr::get($relation, 'uuid');
+                if (isset($this->mapObject[$relation['uuid']])) {
+                    $newRelation = $this->mapObject[$relation['uuid']];
+                    if (isset($newRelation['removed'])) {
+                        if ($this->verbose) {
+                            echo "Object with UUID $uuid, relation UUID (name=${relationName}) $relationUuid was removed\n";
+                        }
+                        unset($objectData['related'][$idx]);
+                        continue;
+                    }
+                    $newRelationUuid = $newRelation['uuid'];
+                    $relationName = Arr::get($relation, 'name', '<no-name>');
+                    if ($this->verbose) {
+                        echo "Object with UUID $uuid, relation UUID (name=${relationName}) remapped from $relationUuid to $newRelationUuid\n";
+                    }
+                    $objectData['related'][$idx]['uuid'] = $newRelationUuid;
+                }
+            }
+        }
+
+        // Remap locations
         $locations = Arr::get($objectData, 'locations');
         if ($locations) {
             foreach ($locations as $idx => $location) {
@@ -1190,6 +1215,16 @@ class ContentImporter
         $preMain = array(
             'original_uuid' => Arr::get(Arr::get($objectData, 'main_node'), 'uuid'),
         );
+        $preRelations = array();
+        $relations = Arr::get($objectData, 'related');
+        if ($relations) {
+            foreach ($relations as $idx => $related) {
+                $preRelations[$idx] = array(
+                    'original_uuid' => Arr::get($related, 'uuid'),
+                );
+            }
+        }
+
         $preLocations = array();
         unset($objectData['action_update_object']);
         unset($objectData['update_attributes']);
@@ -1218,6 +1253,7 @@ class ContentImporter
             'attributes' => Arr::get($objectData, 'attributes'),
             'main_node_uuid' => $mainNodeUuid,
             'original_main_node_uuid' => $preMain['original_uuid'],
+            'relations' => array(),
             // Locations is an array of uuid that point to the nodeIndex
             'locations' => array(),
         );
@@ -1225,6 +1261,19 @@ class ContentImporter
             $objectEntry['owner'] = array();
         }
         $objectEntry['owner']['original_uuid'] = $preOwner['original_uuid'];
+        // Include relations
+        $relations = Arr::get($objectData, 'related');
+        if ($relations) {
+            foreach ($relations as $idx => $related) {
+                $objectEntry['relations'][$idx] = array(
+                    'uuid' => Arr::get($related, 'uuid'),
+                    'name' => Arr::get($related, 'name'),
+                    'class_identifier' => Arr::get($related, 'class_identifier'),
+                    'original_uuid' => $preRelations[$idx]['original_uuid'],
+                    'status' => 'new',
+                );
+            }
+        }
         $this->objectIndex[$uuid] = $objectEntry;
 
         $this->objectIndex[$uuid] = array_merge($this->objectIndex[$uuid], $preData);
@@ -1629,6 +1678,52 @@ class ContentImporter
                 );
             }
         }
+
+        // Verify relations
+        if (isset($objectData['relations'])) {
+            foreach ($objectData['relations'] as $idx => $relation) {
+                $removeRelation = false;
+                $relationUuid = $relation['uuid'];
+                if (isset($this->mapObject[$relationUuid])) {
+                    if (isset($this->mapObject[$relationUuid]['removed'])) {
+                        $removeRelation = true;
+                    } else if (isset($this->mapObject[$relationUuid])) {
+                        $relationUuuid = $this->mapObject[$relationUuid]['uuid'];
+                    }
+                }
+                if (!$removeRelation) {
+                    $relationName = Arr::get($relation, 'name', '<unknown-relation>');
+                    $relation = null;
+                    $foundRelation = false;
+                    if (isset($this->objectIndex[$relationUuid])) {
+                        // Relation will be imported
+                        $foundRelation = true;
+                    } else {
+                        $relationObject = eZContentObject::fetchByRemoteID($relationUuid, false);
+                        $foundRelation = (bool)$relationObject;
+                    }
+                    if (!$foundRelation && $this->interactive) {
+                        echo "Object UUID ${objectUuid} (name=${objectName}) has relation UUID ${relationUuid} (name=${relationName}), but relation object was not found\n";
+                        if ($this->promptYesOrNo("Do you wish to remove this relation? [yes/no] ") === 'yes') {
+                            $removeRelation = true;
+                        } else {
+                            throw new ImportDenied("Object UUID ${objectUuid} has relation UUID ${relationUuid} (name=${relationName}), but relation object was not found");
+                        }
+                    } else if (!$foundRelation) {
+                        $removeRelation = true;
+                    }
+                }
+                if ($removeRelation) {
+                    unset($this->objectIndex[$objectUuid]['relations'][$idx]);
+                    // Mark the object uuid as removed, any future entries with the same relation
+                    // will automatically remove it
+                    $this->mapObject[$relationUuid] = array(
+                        'removed' => true,
+                    );
+                }
+            }
+        }
+
         // Verify all attributes
         $classData = $this->classIndex[$objectData['class_identifier']];
         $isModified = false;
@@ -1921,7 +2016,7 @@ class ContentImporter
             );
             $updateTypes = isset($objectData['action_update_object']) ? $objectData['action_update_object'] : null;
             if (!$updateTypes) {
-                $updateTypes = array('object', 'attribute', 'location');
+                $updateTypes = array('object', 'attribute', 'relation', 'location');
             }
             // Check if object data should be updated or not, a transformation may have stopped the update
             // Note: Even if update is off, the call to update() below needs to happen to sync the node
@@ -2114,7 +2209,7 @@ class ContentImporter
             throw new ImportDenied("Tried to update object content on an object which has not been created/needs-update, status=${objectData['status']}");
         }
         if (!is_array($updateTypes)) {
-            $updateTypes = array('object', 'attribute', 'location');
+            $updateTypes = array('object', 'attribute', 'relation', 'location');
         }
         $translations = $objectData['translations'];
         $languages = array_keys($translations);
@@ -2187,6 +2282,18 @@ class ContentImporter
         }
         $objectManager->update();
         $contentObject = $objectManager->contentObject;
+
+        // Manage relations
+        if (in_array('relation', $updateTypes) && isset($objectData['relations'])) {
+            foreach ($objectData['relations'] as $idx => $relation) {
+                $relatedObject = eZContentObject::fetchByRemoteID($relation['uuid'], false);
+                if (!$relatedObject) {
+                    throw new ImportDenied("Object with UUID ${objectUuid} has a relation to object with UUID ${relation['uuid']} but the object does not exist");
+                }
+                eZContentObject::addContentObjectRelation($relatedObject['id']);
+                $objectData['relations'][$idx]['status'] = 'created';
+            }
+        }
 
         // Now update the other languages
         foreach ($languages as $language) {
