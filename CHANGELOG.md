@@ -3,6 +3,15 @@
 Changelog for the `content-tools` package.
 
 
+## 1.5
+
+- New importer for importing multiple record types. This includes
+  content-language, content-state, section, content-object and nodes.
+  Content may also be transformed on import by mapping tables or
+  using custom Transformation classes.
+- Support for 'php' format when dumping content.
+- Improved support for updating attributes using most builtin data-types.
+
 ## 1.4
 
 - New script for dumping content-object to JSON. It creates an export which
