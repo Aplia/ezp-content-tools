@@ -1,6 +1,7 @@
 <?php
 namespace Aplia\Migration;
 use Phinx\Migration\AbstractMigration;
+use Exception;
 use eZDB;
 
 /**
@@ -16,8 +17,16 @@ abstract class ContentMigration extends AbstractMigration
         $db = eZDB::instance();
         $db->begin();
 
-        $this->changeContent();
+        try {
+            $this->changeContent();
 
+        } catch (Exception $e) {
+            $db->rollback();
+            throw $e;
+        } catch (ErrorException $e) {
+            $db->rollback();
+            throw $e;
+        }
         $db->commit();
     }
 
