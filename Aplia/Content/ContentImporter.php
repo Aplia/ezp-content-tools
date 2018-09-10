@@ -1282,6 +1282,7 @@ class ContentImporter
             $objectEntry['owner'] = array();
         }
         $objectEntry['owner']['original_uuid'] = $preOwner['original_uuid'];
+
         // Include relations
         $relations = Arr::get($objectData, 'related');
         if ($relations) {
@@ -1397,6 +1398,27 @@ class ContentImporter
                     unset($this->nodeMissingIndex[$nodeUuid]);
                 }
             }
+        }
+
+        // If the object uuid was remapped then store the remap so that any
+        // future references to the original uuid gets the new uuid
+        $originalUuid = Arr::get($objectData, 'original_uuid');
+        if ($uuid != $originalUuid) {
+            $existingObject = eZContentObject::fetchByRemoteID($uuid);
+            $remapData = array(
+                'uuid' => $uuid,
+                'name' => Arr::get($objectData, 'name'),
+                'class_identifier' => Arr::get($objectData, 'class_identifier'),
+                'section_identifier' => Arr::get($objectData, 'section_identifier'),
+            );
+            if ($existingObject) {
+                $remapData = array_merge($remapData, array(
+                    'name' => $existingObject->attribute('name'),
+                    'class_identifier' => $existingObject->contentClassIdentifier(),
+                    'section_identifier' => $existingObject->sectionIdentifier(),
+                ));
+            }
+            $this->mapObject[$originalUuid] = $remapData;
         }
     }
 
@@ -1655,6 +1677,7 @@ class ContentImporter
         if (isset($objectData['owner']['uuid']) && $objectData['owner']['uuid']) {
             $removeOwner = false;
             $ownerUuid = $objectData['owner']['uuid'];
+            // Check remapping of ownership again, in case it was changed after imported
             if (isset($this->mapObject[$ownerUuid])) {
                 if (isset($this->mapObject[$ownerUuid]['removed'])) {
                     $this->objectIndex[$objectUuid]['owner'] = null;
