@@ -21,12 +21,13 @@ $script = \eZScript::instance(
     )
 );
 $script->startup();
-$options = $script->getOptions("[format:][preamble][use-namespace][class:][parent-node:][depth:][exclude-parent][only-visible][file-storage:][include-relations][include-embeds][include-owners][include-parents][summary]", "", array(
+$options = $script->getOptions("[format:][preamble][use-namespace][class:][parent-node:][depth:][exclude-parent][only-visible][file-storage:][include-relations][include-embeds][include-owners][include-parents][exclude-node:*][summary]", "", array(
     "format" => "Type of format, choose between json, ndjson, php and line",
     "class" => "Limit search of objects to only these type of content-classes. Comma separated list",
     "parent-node" => "Choose starting point for export, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id> or path:<alias-path>",
     "depth" => "Choose how deep in the tree structure to search, defaults to 1 level. Use * for unlimited",
     "exclude-parent" => "Exclude the parent node from the export, the result is then only the child/sub-nodes",
+    "exclude-node" => "Excluded specific node from export, can be used multiple times",
     "only-visible" => "Only export visible nodes",
     "file-storage" => "Store file content in specified folder, instead of embedding as base64 in export.",
     'include-relations' => 'Include all objects which are related in export',
@@ -116,6 +117,17 @@ $includeParents = false;
 if (Arr::get($options,'include-parents')) {
     $includeParents = true;
 }
+$excludedNodes = array();
+if (Arr::get($options, 'exclude-node')) {
+    foreach ($options['exclude-node'] as $excludeNode) {
+        $nodeMatch = decodeNodeUuid($excludeNode);
+        if ($nodeMatch === null) {
+            $script->shutdown(1,"No node found for match ${excludeNode}");
+        }
+        list($matchType, $matchNodeUuid, $matchNodeId) = $nodeMatch;
+        $excludedNodes[$matchNodeUuid] = true;
+    }
+}
 $parentNodeId = Arr::get($options, 'parent-node');
 $onlyVisible = false;
 if (Arr::get($options, 'only-visible')) {
@@ -149,6 +161,81 @@ if (!class_exists('Aplia\\Content\\Query\\QuerySet')) {
 // Reset current language list to include content languages defined in database
 $allLanguages = array_map(function ($lang) { return $lang->attribute('locale'); }, eZContentLanguage::fetchList());
 eZContentLanguage::setPrioritizedLanguages($allLanguages);
+
+function decodeNodeUuid($text)
+{
+    if (is_numeric($text)) {
+        $node = \eZContentObjectTreeNode::fetch($text);
+        if (!$node) {
+            return null;
+        }
+        return array('node_id', $node->attribute('remote_id'), $node->attribute('node_id'));
+    } else if (preg_match("/^(ez)?node:([0-9]+)$/", $text, $matches)) {
+        $text = $matches[2];
+        $node = \eZContentObjectTreeNode::fetch($text);
+        if (!$node) {
+            return null;
+        }
+        return array('node_id', $node->attribute('remote_id'), $node->attribute('node_id'));
+    } else if (preg_match("/^(ez)?node_uuid:([a-f0-9-]+)$/i", $text, $matches)) {
+        $nodeUuid = strtolower(str_replace("-", "", $matches[2]));
+        $node = \eZContentObjectTreeNode::fetchByRemoteID($nodeUuid);
+        if (!$node) {
+            return null;
+        }
+        return array('node_uuid', $node->attribute('remote_id'), $node->attribute('node_id'));
+    } else if (preg_match("/^(ez)?object:([0-9]+)$/", $text, $matches)) {
+        $objectId = $matches[2];
+        $object = \eZContentObject::fetch($objectId);
+        if (!$object) {
+            return null;
+        }
+        $node = $object->mainNode();
+        if (!$node) {
+            return null;
+        }
+        return array('object_id', $node->attribute('remote_id'), $node->attribute('node_id'));
+    } else if (preg_match("/^(ez)?object_uuid:([a-f0-9-]+)$/i", $text, $matches)) {
+        $objectUuid = strtolower(str_replace("-", "", $matches[2]));
+        $object = \eZContentObject::fetchByRemoteID($objectUuid);
+        if (!$object) {
+            return null;
+        }
+        $node = $object->mainNode();
+        if (!$node) {
+            return null;
+        }
+        return array('object_uuid', $node->attribute('remote_id'), $node->attribute('node_id'));
+    } else if (preg_match("/^path:(.+)$/", $text, $matches)) {
+        $path = $matches[1];
+        $nodeId = \eZURLAliasML::fetchNodeIDByPath($path);
+        if (!$nodeId) {
+            return null;
+        }
+        $node = \eZContentObjectTreeNode::fetch($nodeId);
+        if (!$node) {
+            return null;
+        }
+        return array('path', $node->attribute('remote_id'), $node->attribute('node_id'));
+    } else if ($text) {
+        $path = $text;
+        $nodeId = \eZURLAliasML::fetchNodeIDByPath($path);
+        if (!$nodeId) {
+            return null;
+        }
+        $node = \eZContentObjectTreeNode::fetch($nodeId);
+        if (!$node) {
+            return null;
+        }
+        return array('path', $node->attribute('remote_id'), $node->attribute('node_id'));
+    } else {
+        $node = \eZContentObjectTreeNode::fetch(1);
+        if (!$node) {
+            return null;
+        }
+        return array('node_id', $node->attribute('remote_id'), $node->attribute('node_id'));
+    }
+}
 
 $parentNode = null;
 if (is_numeric($parentNodeId)) {
@@ -220,6 +307,7 @@ $options = array(
     'include_embeds' => $includeEmbeds,
     'include_owners' => $includeOwners,
     'include_parents' => $includeParents,
+    'excluded_nodes' => $excludedNodes,
 );
 if ($fileStorage) {
     $options['file_storage'] = $fileStorage;

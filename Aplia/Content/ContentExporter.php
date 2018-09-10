@@ -17,6 +17,7 @@ class ContentExporter
     public $includeRelations = false;
     // If true then all parents of all visited objects are included
     public $includeParents = false;
+    public $excludedNodes = array();
     public $classMap = array();
     public $objectMap = array();
     public $languageMap = array();
@@ -47,6 +48,9 @@ class ContentExporter
         }
         if (isset($options['include_parents'])) {
             $this->includeParents = $options['include_parents'];
+        }
+        if (isset($options['excluded_nodes'])) {
+            $this->excludedNodes = $options['excluded_nodes'];
         }
     }
 
@@ -266,7 +270,7 @@ class ContentExporter
 
     public function addNode($node) {
         $nodeId = $node->attribute('node_id');
-        // Never export the top-most root node
+        // Never export the top-most root node, or any marked as excluded
         if ($nodeId == 1) {
             return;
         }
@@ -274,19 +278,22 @@ class ContentExporter
         if (isset($this->objectMap[$objectId]['locations'][$nodeId])) {
             return;
         }
-        if (!isset($this->objectMap[$objectId])) {
-            $contentObject = $node->object();
-            $this->addObject($contentObject);
-            $this->objectMap[$objectId]['locations'][$nodeId] = $this->exportNode($node);
+        $nodeUuid = $node->attribute('remote_id');
+        if (!isset($this->excludedNodes[$nodeUuid])) {
+            if (!isset($this->objectMap[$objectId])) {
+                $contentObject = $node->object();
+                $this->addObject($contentObject);
+                $this->objectMap[$objectId]['locations'][$nodeId] = $this->exportNode($node);
 
-            foreach ($contentObject->assignedNodes() as $assignedNode) {
-                $assignedNodeId = $assignedNode->attribute('node_id');
-                if (!isset($this->objectMap[$objectId]['locations'][$assignedNodeId])) {
-                    $this->addNode($assignedNode);
+                foreach ($contentObject->assignedNodes() as $assignedNode) {
+                    $assignedNodeId = $assignedNode->attribute('node_id');
+                    if (!isset($this->objectMap[$objectId]['locations'][$assignedNodeId])) {
+                        $this->addNode($assignedNode);
+                    }
                 }
+            } else {
+                $this->objectMap[$objectId]['locations'][$nodeId] = $this->exportNode($node);
             }
-        } else {
-            $this->objectMap[$objectId]['locations'][$nodeId] = $this->exportNode($node);
         }
         if ($this->includeParents && $node->attribute('parent_node_id') != 1) {
             $parentNode = $node->fetchParent();
