@@ -533,11 +533,13 @@ class ContentImporter
         // Remap owner
         $owner = Arr::get($objectData, 'owner');
         $ownerUuid = Arr::get($owner, 'uuid');
-        if ($ownerUuid && isset($this->nodeUuidMap[$ownerUuid])) {
-            $newOwnerUuid = $this->nodeUuidMap[$ownerUuid];
+        if ($ownerUuid && isset($this->mapObject[$ownerUuid])) {
+            $newOwner = $this->mapObject[$ownerUuid];
+            $newOwnerUuid = $newOwner['uuid'];
             $ownerName = Arr::get($owner, 'name', '<no-name>');
+            $newOwnerName = Arr::get($newOwner, 'name', '<no-name>');
             if ($this->verbose) {
-                echo "Object with UUID $uuid, owner UUID (name=${ownerName}) remapped from $ownerUuid to $newOwnerUuid\n";
+                echo "Object with UUID $uuid, owner UUID (name=${ownerName}) remapped from $ownerUuid to $newOwnerUuid (name=${newOwnerName})\n";
             }
             $objectData['owner']['uuid'] = $newOwnerUuid;
         }
