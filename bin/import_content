@@ -122,7 +122,36 @@ if ($adminUser) {
 $db = eZDB::instance();
 $db->begin();
 
-function parseNdjson(ContentImporter $importer, $filePath) {
+function addNdjsonRecord(ContentImporter $importer, $recordData, $script)
+{
+    if ($recordData) {
+        try {
+            $record = json_decode($recordData, /*assoc*/true);
+        } catch (\Exception $e) {
+            $script->shutdown(1, "Failed to decode record as JSON, found at offset $offset, length " . strlen($record));
+        }
+        if ($record === null && strcmp($recordData, "null") != 0) {
+            $script->shutdown(1, "Failed to decode record as JSON, found at offset $offset, length " . strlen($record));
+        }
+        if (!is_array($record)) {
+            return false;
+        }
+        try {
+            $importer->importRecord($record);
+        } catch (\Aplia\Content\Exceptions\ImportDenied $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            throw $e;
+            $script->shutdown(1, "Failed to import record: " . $e->getMessage());
+        }
+        return true;
+    } else {
+        // Empty record, ignore it
+        return false;
+    }
+}
+
+function parseNdjson(ContentImporter $importer, $filePath, $script) {
     $file = fopen($filePath, "rb");
     $hasIndex = false;
     $buffer = "";
@@ -140,40 +169,22 @@ function parseNdjson(ContentImporter $importer, $filePath) {
             $newOffset += strlen($recordData);
             $buffer = substr($buffer, $recordEnd + 1);
             $recordData = trim($recordData);
-            if ($recordData) {
-                try {
-                    $record = json_decode($recordData, /*assoc*/true);
-                } catch (\Exception $e) {
-                    $script->shutdown(1, "Failed to decode record as JSON, found at offset $offset, length " . strlen($record));
-                }
-                if ($record === null && strcmp($recordData, "null") != 0) {
-                    $script->shutdown(1, "Failed to decode record as JSON, found at offset $offset, length " . strlen($record));
-                }
-                if (!is_array($record)) {
-                    continue;
-                }
-                try {
-                    $importer->importRecord($record);
-                } catch (\Aplia\Content\Exceptions\ImportDenied $e) {
-                    throw $e;
-                } catch (\Exception $e) {
-                    throw $e;
-                    $script->shutdown(1, "Failed to import record: " . $e->getMessage());
-                }
+            if (addNdjsonRecord($importer, $recordData, $script)) {
                 if ($count == 0 && !($importer->hasIndex || !$importer->hasBundle)) {
                     $script->shutdown(1, "The first record received must be an index or bundle, got type: " . $importer->lastRecordType);
                 }
-                $recordData = null;
-            } else {
-                // Empty record, ignore it
             }
+            $recordData = null;
             $count += 1;
             $offset = $newOffset;
         }
     }
+    if (trim($buffer)) {
+        $script->warning("Found non-empty data (count=" . count($buffer) . ") at end of file, data is ignored");
+    }
 }
 
-function parseJson(ContentImporter $importer, $filePath) {
+function parseJson(ContentImporter $importer, $filePath, $script) {
     $data = file_get_contents($filePath);
     if (!$data) {
         return;
@@ -200,9 +211,9 @@ try {
         }
         $importer->setImportPath(dirname($filePath));
         if (substr($filePath, -7) === '.ndjson') {
-            parseNdjson($importer, $filePath);
+            parseNdjson($importer, $filePath, $script);
         } else if (substr($filePath, -5) === '.json') {
-            parseJson($importer, $filePath);
+            parseJson($importer, $filePath, $script);
         } else {
             $script->shutdown(1, "Unsupported file format $filePath, must ether be .json or .ndjson");
         }
