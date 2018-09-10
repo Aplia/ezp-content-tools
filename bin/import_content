@@ -248,6 +248,7 @@ try {
     if ($importer) {
         $importer->cleanupTemporary();
     }
+    $cli->error("Import of content could not be performed");
     $script->shutdown(1, $e->getMessage());
 } catch (\Exception $e) {
     $db->rollback();
