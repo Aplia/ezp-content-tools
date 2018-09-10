@@ -1550,7 +1550,14 @@ class ContentImporter
 
         // Check if there are still missing parent nodes
         if ($this->nodeMissingIndex) {
+            $missingPaths = array();
+            foreach (array_slice($this->nodeMissingIndex, 0, 5) as $nodeUuid => $children) {
+                $missingPaths[] = $nodeUuid;
+            }
             echo "There are still missing " . count($this->nodeMissingIndex) . " parent nodes\n";
+            foreach ($missingPaths as $missingPath) {
+                echo "- ${missingPath}\n";
+            }
             if ($this->promptYesOrNo("Do you wish to reassign them to start node? [yes/no] ") === 'yes') {
                 $startNodeUuid = $this->startNode->remoteID();
                 $startNodeId = $this->startNode->attribute('node_id');
