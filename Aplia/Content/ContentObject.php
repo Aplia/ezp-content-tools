@@ -14,6 +14,7 @@ use Aplia\Content\Exceptions\ContentError;
 use Aplia\Content\Exceptions\AttributeError;
 use Aplia\Content\ContentObjectAttribute;
 use eZINI;
+use eZDB;
 use eZContentClass;
 use eZContentObject;
 use eZContentObjectTreeNode;
@@ -715,7 +716,7 @@ class ContentObject
                 $sectionId = $section->attribute('id');
             }
         }
-        $db = \eZDB::instance();
+        $db = eZDB::instance();
         $db->begin();
         $this->contentObject = self::createWithNodeAssignment(
             $this->_locations,
@@ -837,6 +838,8 @@ class ContentObject
         }
 
         if ($this->stateObjects !== null) {
+            $this->initializeDefaultContentStates();
+
             foreach ($this->stateObjects as $state) {
                 $this->contentObject->assignState($state);
             }
@@ -1015,7 +1018,7 @@ class ContentObject
         $publish = false;
         $contentVersionNo = $contentObject->attribute('current_version');
 
-        $db = \eZDB::instance();
+        $db = eZDB::instance();
         $db->begin();
         try {
             // Create a new version and update dataMap with new attributes
@@ -1271,6 +1274,8 @@ class ContentObject
         }
 
         if ($this->stateObjects !== null) {
+            $this->initializeDefaultContentStates();
+
             foreach ($this->stateObjects as $state) {
                 $contentObject->assignState($state);
             }
@@ -1297,6 +1302,72 @@ class ContentObject
         $this->_nodes = null;
 
         return $this;
+    }
+
+    /**
+     * Makes sure that object has state entries for all defined state groups.
+     * If it is missing it added to the database.
+     * 
+     * Most objects will have all states properly setup, for unknown reasons
+     * some are missing some states. Might be related to publish process that
+     * failed.
+     */
+    protected function initializeDefaultContentStates()
+    {
+        $currentStateIdArray = $this->contentObject->stateIDArray(true);
+        $db = eZDB::instance();
+        $db->begin();
+        $defaultStates = eZContentObjectState::defaults();
+        $contentObjectId = $this->contentObject->attribute('id');
+        foreach ($defaultStates as $state) {
+            $stateId = $state->attribute('id');
+            $groupId = $state->attribute('group_id');
+            if (!isset($currentStateIdArray[$groupId])) {
+                // Workaround for missing state entries on objects.
+                // State does not exist on object, create it
+                $db->query("INSERT INTO ezcobj_state_link (contentobject_state_id, contentobject_id) VALUES($stateId, $contentObjectId)");
+           }
+        }
+        $db->commit();
+    }
+
+    /**
+     * Creates the section with identifier $identifier,
+     * Additional fields can be set with $fields, supported entries are:
+     * - name
+     * - locale
+     * - navigation_part_identifier
+     * 
+     * @throws ObjectAlreadyExist if the section already exists
+     * @return eZSection
+     */
+    public static function createSection($identifier, array $fields)
+    {
+        if (eZSection::fetchByIdentifier($identifier, false)) {
+            throw new ObjectAlreadyExist("The section $identifier already exists, cannot create");
+        }
+        $data = Arr::only($fields, array('name', 'locale', 'navigation_part_identifier'));
+        $data['identifier'] = $identifier;
+        if (!isset($data['navigation_part_identifier'])) {
+            $data['navigation_part_identifier'] = 'ezcontentnavigationpart';
+        }
+        $section = new eZSection($data);
+        $section->store();
+        return $section;
+    }
+
+    /**
+     * Deletes the section with identifier $identifier,
+     * 
+     * @throws ObjectDoesNotExist if the section does not exist
+     */
+    public static function deleteSection($identifier)
+    {
+        $section = eZSection::fetchByIdentifier($identifier);
+        if (!$section) {
+            throw new ObjectDoesNotExist("The section $identifier does not exist, cannot delete");
+        }
+        $section->delete();
     }
 
     /**
@@ -1501,7 +1572,7 @@ class ContentObject
             $sectionId = 0;
         }
 
-        $db = \eZDB::instance();
+        $db = eZDB::instance();
         $db->begin();
         if (!$contentObject) {
             $contentObject = $class->instantiateIn( $languageCode, false, $sectionId, false, \eZContentObjectVersion::STATUS_INTERNAL_DRAFT );
