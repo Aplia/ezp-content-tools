@@ -15,6 +15,8 @@ class ContentExporter
     public $includeOwners = false;
     public $includeEmbeds = false;
     public $includeRelations = false;
+    // If true then all parents of all visited objects are included
+    public $includeParents = false;
     public $classMap = array();
     public $objectMap = array();
     public $languageMap = array();
@@ -42,6 +44,9 @@ class ContentExporter
         }
         if (isset($options['include_embeds'])) {
             $this->includeEmbeds = $options['include_embeds'];
+        }
+        if (isset($options['include_parents'])) {
+            $this->includeParents = $options['include_parents'];
         }
     }
 
@@ -282,6 +287,13 @@ class ContentExporter
             }
         } else {
             $this->objectMap[$objectId]['locations'][$nodeId] = $this->exportNode($node);
+        }
+        if ($this->includeParents && $node->attribute('parent_node_id') != 1) {
+            $parentNode = $node->fetchParent();
+            if ($parentNode) {
+                // echo "add parent ", $parentNode->attribute('node_id'), "\n";
+                $this->addNode($parentNode);
+            }
         }
     }
 
