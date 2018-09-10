@@ -89,6 +89,9 @@ class ContentImporter
         'contentobject_create' => 0,
     );
 
+    // 
+    public $rootNode;
+
     public function __construct(array $options = null) {
         if (isset($options['startNode'])) {
             $this->startNode = $options['startNode'];
@@ -102,6 +105,8 @@ class ContentImporter
             throw new UnsetValueError("ContentImporter requires startNode/start_node set");
         }
         $this->addExistingNode($this->startNode, /*nodeUuid*/null, /*children*/null, true);
+        $this->rootNode = eZContentObjectTreeNode::fetch(1);
+        $this->addExistingNode($this->rootNode, /*nodeUuid*/null, /*children*/null, true);
     }
 
     public function __isset($name)
