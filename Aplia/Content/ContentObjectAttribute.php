@@ -348,7 +348,36 @@ class ContentObjectAttribute
                         $userData[] = (int)(bool)$value['is_enabled'];
                     }
                     $value = implode("|", $userData);
-                    $asString = true;
+                    $origValue = $attribute->toString();
+                    if ($origValue == $value) {
+                        // Same values, don't do anything
+                        return;
+                    }
+
+                    $objectId = $attribute->attribute('contentobject_id');
+                    $user = \eZUser::fetch($objectId);
+                    // ezuser type does not like inserting the same email as it already has using fromString
+                    // If the eZUser already exists then update the object directly.
+                    if ($user) {
+                        $user->setAttribute('login', $userData[0]);
+                        $user->setAttribute('email', $userData[1]);
+                        if (isset($userData[2])) {
+                            $user->setAttribute('password_hash', $userData[2]);
+                        }
+                        if (isset($userData[3])) {
+                            $user->setAttribute('password_hash_type', \eZUser::passwordHashTypeID($userData[3]));
+                        }
+                        if (isset($userData[4])) {
+                            $userSetting = \eZUserSetting::fetch($objectId);
+                            $userSetting->setAttribute("is_enabled", (int)(bool)$userData[4]);
+                            $userSetting->store();
+                        }
+                        $user->store();
+                        // Data has been stored, skip content/string import
+                    } else {
+                        // Use fromString() to setup eZUser object
+                        $asString = true;
+                    }
                 } else {
                     throw new ValueError("Array passed to ezuser attribute '" . $attribute->attribute('identifier') . "' does not have a login and email set");
                 }
