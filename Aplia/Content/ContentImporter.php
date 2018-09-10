@@ -577,13 +577,22 @@ class ContentImporter
             foreach ($locations as $idx => $location) {
                 $nodeUuid = $location['uuid'];
                 $parentUuid = $location['parent_node_uuid'];
+                $parentId = $location['parent_node_id'];
                 // Store original values in separate fields
                 $preLocations[$idx] = array(
                     'original_uuid' => $nodeUuid,
                     'original_parent_node_uuid' => $parentUuid,
                 );
                 // Then see if parent is remapped
-                if (isset($this->nodeUuidMap[$parentUuid])) {
+                // Special case when parent is 1, the root node
+                if ($parentId == 1) {
+                    $newParentUuid = $this->rootNode->attribute('remote_id');
+                    if ($this->verbose) {
+                        echo "Object with UUID $uuid, location $nodeUuid remapped root-parent from $parentUuid to $newParentUuid\n";
+                    }
+                    $objectData['locations'][$idx]['parent_node_uuid'] = $newParentUuid;
+                    continue;
+                } else if (isset($this->nodeUuidMap[$parentUuid])) {
                     $newParentUuid = $this->nodeUuidMap[$parentUuid];
                     if ($this->verbose) {
                         echo "Object with UUID $uuid, location $nodeUuid remapped parent from $parentUuid to $newParentUuid\n";
