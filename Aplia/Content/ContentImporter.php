@@ -1267,6 +1267,7 @@ class ContentImporter
         $objectEntry = array(
             'uuid' => $uuid,
             'status' => 'new',
+            'object_status' => Arr::get($objectData, 'status'),
             'class_identifier' => Arr::get($objectData, 'class_identifier'),
             'original_uuid' => Arr::get($objectData, 'original_uuid'),
             'original_id' => Arr::get($objectData, 'object_id'),
@@ -1322,6 +1323,9 @@ class ContentImporter
         if ($contentObject) {
             // Object already exists, should only be updated
             $this->objectIndex[$uuid]['status'] = 'present';
+        } else if ($this->objectIndex[$uuid]['object_status'] !== null && $this->objectIndex[$uuid]['object_status'] !== 'published') {
+            // Do not import drafts and archived objects by default
+            $this->objectIndex[$uuid]['status'] = 'removed';
         }
         if ($this->objectIndex[$uuid]['status'] === 'new') {
             $this->newObjectQueue[$uuid] = $uuid;
@@ -1888,6 +1892,7 @@ class ContentImporter
                 $objectUuid = $attributeData['object_uuid'];
                 $objectId = Arr::get($attributeData, 'object_id');
                 $objectName = Arr::get($attributeData, 'name', '<unknown-name>');
+                $objectStatus = Arr::get($attributeData, 'status');
                 $hasRelation = false;
                 if (isset($this->objectIndex[$objectUuid])) {
                     $hasRelation = true;
@@ -1897,7 +1902,13 @@ class ContentImporter
                 }
                 if (!$hasRelation) {
                     $failed = false;
-                    if ($this->interactive) {
+                    if ($objectStatus !== null && $objectStatus !== 'published') {
+                        // If the object is a draft or is archived then there is no point in
+                        // storing a reference to the object, instead empty the relation
+                        return array(
+                            'value' => null,
+                        );
+                    } else if ($this->interactive) {
                         echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist in import nor in DB\n";
                         if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no] ") !== 'yes') {
                             $failed = true;
@@ -1931,6 +1942,7 @@ class ContentImporter
                 $objectUuid = $relationData['object_uuid'];
                 $objectId = Arr::get($relationData, 'object_id');
                 $objectName = Arr::get($relationData, 'name', '<unknown-name>');
+                $objectStatus = Arr::get($relationData, 'status');
                 $hasRelation = false;
                 if (isset($this->objectIndex[$objectUuid])) {
                     $hasRelation = true;
@@ -1940,7 +1952,12 @@ class ContentImporter
                 }
                 if (!$hasRelation) {
                     $failed = false;
-                    if ($this->interactive) {
+                    if ($objectStatus !== null && $objectStatus !== 'published') {
+                        // If the object is a draft or is archived then there is no point in
+                        // storing a reference to the object, instead empty the relation
+                        $isChanged = true;
+                        continue;
+                    } else if ($this->interactive) {
                         echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist\n";
                         if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no] ") !== 'yes') {
                             $failed = true;
@@ -1979,6 +1996,7 @@ class ContentImporter
                 $embeds = $xpath->query('//embed');
                 foreach ($embeds as $embed) {
                     $embedUuid = $embed->getAttribute('uuid');
+                    $objectStatus = $embed->getAttribute('status');
                     $hasEmbedObject = false;
                     if (isset($this->objectIndex[$embedUuid])) {
                         $hasEmbedObject = true;
@@ -1987,7 +2005,12 @@ class ContentImporter
                         $hasEmbedObject = (bool)$embedObject;
                     }
                     if (!$hasEmbedObject) {
-                        if ($this->interactive) {
+                        if ($objectStatus !== null && $objectStatus !== 'published') {
+                            // If the object is a draft or is archived then there is no point in
+                            // storing a reference to the object, instead empty the embed
+                            $isChanged = true;
+                            continue;
+                        } else if ($this->interactive) {
                             echo "XML: Embedded object with UUID ${embedUuid} was not found\n";
                             if ($this->promptYesOrNo("Do you wish to remove embed entry? [yes/no] ") !== 'no') {
                                 throw new ImportDenied("XML content for attribute ${identifier} has embedded object with UUID ${embedUuid} which does not exist");
@@ -2103,6 +2126,12 @@ class ContentImporter
                 }
             } else if ($objectData['status'] === 'created' || $objectData['status'] === 'present') {
                 $hasObject = true;
+            } else if ($objectData['status'] === 'removed') {
+                // Object was marked as removed, do not create it.
+                if ($this->verbose) {
+                    echo "Skipping node ", $nodeData['uuid'], " ", $nodeData['status'], " ", Arr::get($nodeData, 'name', ''), ", the object is marked as removed\n";
+                }
+                return;
             } else {
                 $hasObject = false;
             }
