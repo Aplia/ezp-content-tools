@@ -9,6 +9,7 @@ Changelog for the `content-tools` package.
   archived are now removed.
 - Better display of name on referenced nodes, now displays root and top-level nodes.
 - All object relations are now exported.
+- Improved export of PHP code to set more fields on object and locations.
 - Fixed issue in code for mapping tree identifier.
 - Fixed issue in importing files to file/image data-types.
 
