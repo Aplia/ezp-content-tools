@@ -410,46 +410,6 @@ if ($format === "line") {
     $data = array_merge($data, $exporter->getExportItems());
     echo \Aplia\Formats\Json::encode($data, $prettyPrint), "\n";
 } else if($format === "php") {
-
-    if ($phpPreamble) {
-        echo <<<'EOT'
-<?php
-
-
-EOT;
-
-        if ($useNamespace) {
-            echo <<<'EOT'
-use Aplia\Content\ContentType;
-
-
-EOT;
-        }
-
-    echo <<<'EOT'
-require 'config.php';
-require 'autoload.php';
-
-$cli = \eZCLI::instance();
-$script = \eZScript::instance(
-    array(
-        'description' =>
-            "Defines content object definitions",
-        'use-session' => false,
-        'use-modules' => true,
-        'use-extensions' => true,
-    )
-);
-$script->startup();
-$options = $script->getOptions("", "", array());
-$script->initialize();
-$db = \eZDB::instance();
-$db->begin();
-
-
-EOT;
-    } // end if preamble
-
     $exporter = new \Aplia\Content\ContentExporter($options);
     if ($includeParent) {
         $exporter->addNode($parentNode);
@@ -458,6 +418,13 @@ EOT;
         $exporter->addQuery($query);
     }
     $exporter->finalize();
+
+    $phpExporter = new \Aplia\Content\ContentPhpExporter($exporter);
+
+    if ($phpPreamble) {
+        $phpExporter->generatePreamble();
+    }
+
     $data = array(
         '__type__' => 'ez_content_bundle',
         'export_date' => (new \DateTime())->format(\DateTime::RFC3339),
@@ -466,100 +433,26 @@ EOT;
     );
     $data = array_merge($data, $exporter->getExportItems());
 
-    $contentTypeClass = '\\Aplia\\Content\\ContentType';
     $initializedClasses = array();
 
     if (!isset($data['content_objects'])) {
         $data['content_objects'] = array();
     }
+
     foreach ($data['content_objects'] as $contentObjectId => $contentObject) {
-        $objectAttributes = (isset($contentObject['attributes']) && count($contentObject['attributes'])) ? $contentObject['attributes'] : array();
-
-        if (isset($contentObject['class_identifier']) and isset($contentObject['name'])) {
-            $params = array();
-            if (isset($contentObject['uuid'])) {
-                $params['uuid'] = $contentObject['uuid'];
-            }
-            $objectName = $contentObject['name'];
-            $uuidString = isset($params['uuid']) ? ", uuid: ".$params['uuid'] : "";
-            $className = $contentObject['class_identifier'];
-            $classNameRepr = "\$" . underscoreToCamelCase($className) . "Type";
-            $objectNameRepr = "\$" . lcfirst(str_replace(" ", "", trim($objectName))) . ucfirst(underscoreToCamelCase($className));
-
-            if (isset($initializedClasses[$className])) {
-                $initializedClasses[$className][] = $objectName.$uuidString;
-            } else {
-                $initializedClasses[$className] = array($objectName.$uuidString);
-                echo "\n${classNameRepr} = new ${contentTypeClass}('${className}');\n";
-            }
-            $objectFields = array(
-                'sectionIdentifier' => $contentObject['section_identifier'],
-                'publishedDate' => $contentObject['published_date'],
-                'states' => array_values($contentObject['states']),
-            );
-            if (isset($contentObject['owner'])) {
-                $objectFields['ownerUuid'] = $contentObject['owner']['uuid'];
-            }
-            if (!$contentObject['is_always_available']) {
-                $objectFields['alwaysAvailable'] = false;
-            }
-            if ($contentObject['status'] !== 'published') {
-                $objectFields['status'] = $contentObject['status'];
-            }
-
-            echo "${objectNameRepr} = ${classNameRepr}->contentObject(\n" . indentTextLines(var_export($params, true))."\n)\n";
-            if ($objectFields) {
-                echo "    ->set(" . indentTextLines(var_export($objectFields, true), 4, false) .")\n";
-            }
-
-            if (isset($contentObject['locations'])) {
-                $params['locations'] = array();
-                foreach ($contentObject['locations'] as $nodeId => $contentNode) {
-                    if (isset($contentNode['parent_node_uuid'])) {
-                        $locationFields = array(
-                            'parent_uuid' => $contentNode['parent_node_uuid'],
-                            'uuid' => $contentNode['uuid'],
-                            'sort_by' => $contentNode['sort_by'],
-                        );
-                        if ($contentNode['priority']) {
-                            $locationFields['priority'] = $contentNode['priority'];
-                        }
-                        if ($contentNode['visibility'] !== 'visibile') {
-                            $locationFields['visibility'] = $contentNode['visibility'];
-                        }
-                        $treeIdentifier = \Aplia\Content\ContentObject::mapNodeToTreeIdentifier($contentNode['node_id']);
-                        if ($treeIdentifier) {
-                            $locationFields['tree_identifier'] = $treeIdentifier;
-                        }
-                        $parentTreeIdentifier = \Aplia\Content\ContentObject::mapNodeToTreeIdentifier($contentNode['parent_node_id']);
-                        if ($parentTreeIdentifier) {
-                            $locationFields['parent_tree_identifier'] = $parentTreeIdentifier;
-                        }
-                        $locationData = indentTextLines(var_export($locationFields, true), 4, false);
-                        echo "    ->addLocation($locationData)\n";
-                    } else {
-                        $script->shutdown(1, "Parent node uuid not defined in content object $contentObjectId");
-                    }
-                }
-            }
-
-            if (isset($contentObject['translations']['nor-NO']['attributes'])) {
-                $objectAttributes = array_merge($objectAttributes, $contentObject['translations']['nor-NO']['attributes']);
-            }
-
-            if ($objectAttributes) {
-                foreach ($objectAttributes as $attrIdentifier => $attribute) {
-                    if ($attribute && (isset($attribute['found']) ? $attribute['found'] : true)) {
-                        echo "    ->setAttribute(" . var_export($attrIdentifier, true) . ", " . var_export($attribute, true) . ")\n";
-                    }
-                }
-            }
-
-            echo "    ->create();\n\n";
-        } else {
-            $script->shutdown(1, "Class identifier or name not set for content object id ".$contentObjectId);
+        if (!(isset($contentObject['class_identifier']) && isset($contentObject['name']))) {
+            $script->shutdown(1, "Class identifier or name not set for content object id ${contentObjectId}");
         }
 
+        $languages = array_keys($contentObject['translations']);
+        $mainLanguage = array_shift($languages);
+
+        // First entry creates the object with attributes and locations
+        $phpExporter->generateContentObjectCode($contentObjectId, $contentObject, $mainLanguage, /*withLocation*/true, /*isUpdate*/false);
+        // Additional languages will only create attributes in the given language, no locations
+        foreach ($languages as $language) {
+            $phpExporter->generateContentObjectCode($contentObjectId, $contentObject, $language, /*withLocation*/false, /*isUpdate*/true);
+        }
     }
 
     if ($summary) {
