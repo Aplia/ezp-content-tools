@@ -801,8 +801,8 @@ class ContentObjectAttribute
                 throw new FileDoesNotExist("The image file $path does not exist, cannot import image file to '" . $attribute->attribute('identifier') . "'");
             }
             $contentObject = $object->contentObject;
-            $contentVersion = $contentObject->currentVersion();
-            if (!$attribute->insertRegularFile($contentObject, $contentVersion, $this->language, $path, $result)) {
+            $contentVersionId = $contentObject->attribute("current_version");
+            if (!$attribute->insertRegularFile($contentObject, $contentVersionId, $this->language, $path, $result)) {
                 throw new ContentError("Failed to import file $path into ezimage attribute '" . $attribute->attribute('identifier') . "'");
             }
             $content = $attribute->content();
@@ -819,8 +819,8 @@ class ContentObjectAttribute
                 throw new FileDoesNotExist("The image file $path does not exist, cannot import image file to '" . $attribute->attribute('identifier') . "'");
             }
             $contentObject = $object->contentObject;
-            $contentVersion = $contentObject->currentVersion();
-            if (!$attribute->insertRegularFile($contentObject, $contentVersion, $this->language, $path, $result)) {
+            $contentVersionId = $contentObject->attribute("current_version");
+            if (!$attribute->insertRegularFile($contentObject, $contentVersionId, $this->language, $path, $result)) {
                 throw new ContentError("Failed to import file $path into ezimage attribute '" . $attribute->attribute('identifier') . "'");
             }
             $content = $attribute->content();
@@ -830,9 +830,9 @@ class ContentObjectAttribute
             $attribute->setContent($content);
         } else if ($value instanceof \eZHTTPFile) {
             $contentObject = $object->contentObject;
-            $contentVersion = $contentObject->currentVersion();
+            $contentVersionId = $contentObject->attribute("current_version");
             $mimeData = eZMimeType::findByFileContents($value->attribute("original_filename"));
-            if (!$attribute->insertHTTPFile($contentObject, $contentVersion, $this->language, $attribute, $value, $mimeData, $result)) {
+            if (!$attribute->insertHTTPFile($contentObject, $contentVersionId, $this->language, $attribute, $value, $mimeData, $result)) {
                 throw new ContentError("Failed to import HTTP file into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
             }
         } else if ($value instanceof HttpFile) {
@@ -881,8 +881,8 @@ class ContentObjectAttribute
                 throw new FileDoesNotExist("The binary file $path does not exist, cannot import image file to '" . $attribute->attribute('identifier') . "'");
             }
             $contentObject = $object->contentObject;
-            $contentVersion = $contentObject->currentVersion();
-            if (!$attribute->insertRegularFile($contentObject, $contentVersion, $this->language, $path, $result)) {
+            $contentVersionId = $contentObject->attribute("current_version");
+            if (!$attribute->insertRegularFile($contentObject, $contentVersionId, $this->language, $path, $result)) {
                 throw new ContentError("Failed to import file $path into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
             }
             $content = $attribute->content();
@@ -892,9 +892,9 @@ class ContentObjectAttribute
             $attribute->setContent($content);
         } else if ($value instanceof \eZHTTPFile) {
             $contentObject = $object->contentObject;
-            $contentVersion = $contentObject->currentVersion();
+            $contentVersionId = $contentObject->attribute("current_version");
             $mimeData = eZMimeType::findByFileContents($value->attribute("original_filename"));
-            if (!$attribute->insertHTTPFile($contentObject, $contentVersion, $this->language, $attribute, $value, $mimeData, $result)) {
+            if (!$attribute->insertHTTPFile($contentObject, $contentVersionId, $this->language, $attribute, $value, $mimeData, $result)) {
                 throw new ContentError("Failed to import HTTP file into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
             }
         } else if ($value instanceof HttpFile) {
