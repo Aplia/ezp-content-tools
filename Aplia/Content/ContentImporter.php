@@ -107,6 +107,12 @@ class ContentImporter
         $this->addExistingNode($this->startNode, /*nodeUuid*/null, /*children*/null, true);
         $this->rootNode = eZContentObjectTreeNode::fetch(1);
         $this->addExistingNode($this->rootNode, /*nodeUuid*/null, /*children*/null, true);
+        $this->contentNode = eZContentObjectTreeNode::fetch(ContentObject::mapTreeIdentifierToNode('content'));
+        $this->addExistingNode($this->contentNode, /*nodeUuid*/null, /*children*/null, true);
+        $this->usersNode = eZContentObjectTreeNode::fetch(ContentObject::mapTreeIdentifierToNode('users'));
+        $this->addExistingNode($this->usersNode, /*nodeUuid*/null, /*children*/null, true);
+        $this->mediaNode = eZContentObjectTreeNode::fetch(ContentObject::mapTreeIdentifierToNode('media'));
+        $this->addExistingNode($this->mediaNode, /*nodeUuid*/null, /*children*/null, true);
     }
 
     public function __isset($name)
@@ -1629,7 +1635,11 @@ class ContentImporter
             if ($object) {
                 $objectName = $object->attribute('name');
             } else {
-                $objectName = "<no-name>";
+                if ($nodeData['uuid'] === $this->rootNode->remoteID() || Arr::get($nodeData, 'node_id') === 1) {
+                    $objectName = '<root>';
+                } else {
+                    $objectName = "<no-name>";
+                }
             }
             $objectUuid = null;
         }
@@ -2017,7 +2027,11 @@ class ContentImporter
             if ($object) {
                 $objectName = $object->attribute('name');
             } else {
-                $objectName = "<no-name>";
+                if ($nodeData['uuid'] === $this->rootNode->remoteID() || Arr::get($nodeData, 'node_id') === 1) {
+                    $objectName = '<root>';
+                } else {
+                    $objectName = "<no-name>";
+                }
             }
             $objectUuid = null;
         }
@@ -2180,7 +2194,11 @@ class ContentImporter
             if ($object) {
                 $objectName = $object->attribute('name');
             } else {
-                $objectName = "<no-name>";
+                if ($nodeData['uuid'] === $this->rootNode->remoteID() || Arr::get($nodeData, 'node_id') === 1) {
+                    $objectName = '<root>';
+                } else {
+                    $objectName = "<no-name>";
+                }
             }
             $objectUuid = null;
         }
