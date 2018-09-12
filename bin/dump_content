@@ -492,8 +492,25 @@ EOT;
                 $initializedClasses[$className] = array($objectName.$uuidString);
                 echo "\n${classNameRepr} = new ${contentTypeClass}('${className}');\n";
             }
+            $objectFields = array(
+                'sectionIdentifier' => $contentObject['section_identifier'],
+                'publishedDate' => $contentObject['published_date'],
+                'states' => array_values($contentObject['states']),
+            );
+            if (isset($contentObject['owner'])) {
+                $objectFields['ownerUuid'] = $contentObject['owner']['uuid'];
+            }
+            if (!$contentObject['is_always_available']) {
+                $objectFields['alwaysAvailable'] = false;
+            }
+            if ($contentObject['status'] !== 'published') {
+                $objectFields['status'] = $contentObject['status'];
+            }
 
             echo "${objectNameRepr} = ${classNameRepr}->contentObject(\n" . indentTextLines(var_export($params, true))."\n)\n";
+            if ($objectFields) {
+                echo "    ->set(" . indentTextLines(var_export($objectFields, true), 4, false) .")\n";
+            }
 
             if (isset($contentObject['locations'])) {
                 $params['locations'] = array();
@@ -502,7 +519,14 @@ EOT;
                         $locationFields = array(
                             'parent_uuid' => $contentNode['parent_node_uuid'],
                             'uuid' => $contentNode['uuid'],
+                            'sort_by' => $contentNode['sort_by'],
                         );
+                        if ($contentNode['priority']) {
+                            $locationFields['priority'] = $contentNode['priority'];
+                        }
+                        if ($contentNode['visibility'] !== 'visibile') {
+                            $locationFields['visibility'] = $contentNode['visibility'];
+                        }
                         $treeIdentifier = \Aplia\Content\ContentObject::mapNodeToTreeIdentifier($contentNode['node_id']);
                         if ($treeIdentifier) {
                             $locationFields['tree_identifier'] = $treeIdentifier;
@@ -511,7 +535,7 @@ EOT;
                         if ($parentTreeIdentifier) {
                             $locationFields['parent_tree_identifier'] = $parentTreeIdentifier;
                         }
-                        $locationData = indentTextLines(var_export($locationFields, true));
+                        $locationData = indentTextLines(var_export($locationFields, true), 4, false);
                         echo "    ->addLocation($locationData)\n";
                     } else {
                         $script->shutdown(1, "Parent node uuid not defined in content object $contentObjectId");
