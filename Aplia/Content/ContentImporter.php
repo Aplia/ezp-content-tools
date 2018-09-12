@@ -1996,7 +1996,22 @@ class ContentImporter
                 $embeds = $xpath->query('//embed');
                 foreach ($embeds as $embed) {
                     $embedUuid = $embed->getAttribute('uuid');
-                    $objectStatus = $embed->getAttribute('status');
+                    $embedName = $embed->getAttribute('name');
+                    if (!$embedName) {
+                        $embedName = '<no-name>';
+                    }
+                    $embedObjectStatus = $embed->getAttribute('status');
+                    if ($embedUuid && isset($this->mapObject[$embedUuid])) {
+                        $newEmbed = $this->mapObject[$embedUuid];
+                        $newEmbedUuid = $newEmbed['uuid'];
+                        $newEmbedName = Arr::get($newEmbed, 'name', '<no-name>');
+                        if ($this->verbose) {
+                            echo "Object attribute $identifier, embedded object UUID (name=${embedName}) remapped from $embedUuid to $newEmbedUuid (name=${newEmbedName})\n";
+                        }
+                        $embedUuid = $newEmbedUuid;
+                        $embedName = $newEmbedName;
+                        $embedObjectStatus = Arr::get($newEmbed, 'object_status');
+                    }
                     $hasEmbedObject = false;
                     if (isset($this->objectIndex[$embedUuid])) {
                         $hasEmbedObject = true;
@@ -2005,7 +2020,7 @@ class ContentImporter
                         $hasEmbedObject = (bool)$embedObject;
                     }
                     if (!$hasEmbedObject) {
-                        if ($objectStatus !== null && $objectStatus !== 'published') {
+                        if ($embedObjectStatus !== null && $embedObjectStatus !== 'published') {
                             // If the object is a draft or is archived then there is no point in
                             // storing a reference to the object, instead empty the embed
                             $isChanged = true;
