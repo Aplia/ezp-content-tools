@@ -2,6 +2,10 @@
 
 Changelog for the `content-tools` package.
 
+## 1.5.5
+
+- Support for moving locations with ContentObject::moveLocation().
+
 ## 1.5.4
 
 - Support for object 'status' value, it is exported as a string.

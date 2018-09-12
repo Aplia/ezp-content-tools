@@ -387,6 +387,55 @@ class ContentObject
     }
 
     /**
+     * Move an existing location to a new parent.
+     * 
+     * The simplest way is to just specify the parent node IDs
+     * @code
+     * // move from parent 42 to new parent 2
+     * moveLocation(42, 2)
+     * @endcode
+     * 
+     * If you need specifiy uuid or pass a node object use an array
+     * @code
+     * moveLocation(array(
+     *   'parent_uuid' => 'abcdef',
+     * ), array(
+     *   'parent_uuid' => 'def',
+     * ))
+     * @endcode
+     * 
+     * @code
+     * moveLocation(array(
+     *   'node' => $node,
+     * ), array(
+     *   'node' => $newNode,
+     * ))
+     * @endcode
+     * 
+     * @return self
+     */
+    public function moveLocation($location, $newLocation)
+    {
+        $location = $this->processLocationValue($location);
+        $location = $this->processLocationEntry($location, /*checkExisting*/true);
+        if (!isset($location['node'])) {
+            throw new CreationError("Cannot move location without a node or parent");
+        }
+        $newLocation = $this->processLocationValue($newLocation);
+        $newLocation = $this->processLocationEntry($newLocation, /*checkExisting*/false);
+        $newLocation['uuid'] = $location['uuid'];
+        $location['status'] = 'move';
+        $location['newLocation'] = $newLocation;
+
+        if ($this->_locations === null) {
+            $this->_locations = array();
+        }
+        $this->_locations[] = $location;
+
+        return $this;
+    }
+
+    /**
      * Add a new location or update an existing one.
      * The location is determined by parent_id, parent_uuid or parent_node.
      * 
@@ -1225,6 +1274,7 @@ class ContentObject
 
         $newLocations = array();
         $removeLocations = array();
+        $moveLocations = array();
         $updateLocations = array();
         $modifiedNodes = array();
         foreach ($this->_locations as $idx => $location) {
@@ -1235,6 +1285,8 @@ class ContentObject
                 $newLocations[$idx] = $location;
             } else if ($location['status'] == 'remove') {
                 $removeLocations[$idx] = $location;
+            } else if ($location['status'] == 'move') {
+                $moveLocations[$idx] = $location;
             } else if ($location['status'] == 'update' || $location['status'] == 'move') {
                 if (!isset($location['node'])) {
                     throw new UnsetValueError("Location index $idx contains '" . $location['status'] . "' entry but no 'node' was found");
@@ -1294,7 +1346,37 @@ class ContentObject
                 }
             }
 
-            // TODO: Move locations
+            if ($moveLocations) {
+                foreach ($moveLocations as $idx => $location) {
+                    $node = $location['node'];
+                    $oldUuid = $location['uuid'];
+                    $newLocation = $location['newLocation'];
+                    $newParentId = null;
+                    $newParentUuid = null;
+                    if (isset($newLocation['parent_uuid'])) {
+                        $newParentUuid = $newLocation['parent_uuid'];
+                        $newParentNode = eZContentObjectTreeNode::fetchByRemoteID($newParentUuid);
+                        if ($newParentNode) {
+                            $newParentId = $newParentNode->attribute('node_id');
+                        }
+                    } else if (isset($newLocation['parent_node_id'])) {
+                        $newParentNode = eZContentObjectTreeNode::fetch($newLocation['parent_node_id']);
+                        if ($newParentNode) {
+                            $newParentId = $newLocation['parent_node_id'];
+                            $newParentUuid = $newParentNode->attribute('remote_id');
+                        }
+                    } else {
+                        throw new UnsetValueError("Cannot determine new parent for location $oldUuid, no 'parent_uuid' or 'parent_node_id' has been set");
+                    }
+                    if (!$newParentId) {
+                        throw new ObjectDoesNotExist("Cannot move location $oldUuid to parent with UUID=${newParentUuid}, id=${newParentId}, parent does not exist");
+                    }
+                    $node->move($newParentId);
+                    $modifiedNodes[] = $node;
+                    unset($this->_locations[$idx]);
+                }
+            }
+
             if ($updateLocations) {
                 foreach ($updateLocations as $idx => $location) {
                     $node = $location['node'];
