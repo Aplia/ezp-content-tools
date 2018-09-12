@@ -1103,6 +1103,9 @@ class ContentObject
                     $sectionId = $this->sectionIdentifier;
                 } else {
                     $section = eZSection::fetchByIdentifier($this->sectionIdentifier);
+                    if (!$section) {
+                        throw new ObjectDoesNotExist("The eZ section with identifier '" . $this->sectionIdentifier . "' does not exist");
+                    }
                     $sectionId = $section->attribute('id');
                 }
                 $contentObject->setAttribute('section_id', $sectionId);
