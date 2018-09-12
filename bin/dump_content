@@ -4,6 +4,7 @@ use Aplia\Support\Arr;
 use \eZCLI;
 use \eZScript;
 use Aplia\Content\ContentType;
+use Aplia\Content\ContentObject;
 
 @include_once 'config.php';
 require_once 'autoload.php';
@@ -21,13 +22,14 @@ $script = \eZScript::instance(
     )
 );
 $script->startup();
-$options = $script->getOptions("[format:][preamble][use-namespace][class:][parent-node:][depth:][exclude-parent][only-visible][file-storage:][include-relations][include-embeds][include-owners][include-parents][exclude-node:*][summary]", "", array(
+$options = $script->getOptions("[format:][preamble][use-namespace][class:][parent-node:][depth:][exclude-parent][only-visible][file-storage:][include-relations][include-embeds][include-owners][include-parents][no-exclude-top-nodes][exclude-node:*][summary]", "", array(
     "format" => "Type of format, choose between json, ndjson, php and line",
     "class" => "Limit search of objects to only these type of content-classes. Comma separated list",
     "parent-node" => "Choose starting point for export, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id> or path:<alias-path>",
     "depth" => "Choose how deep in the tree structure to search, defaults to 1 level. Use * for unlimited",
     "exclude-parent" => "Exclude the parent node from the export, the result is then only the child/sub-nodes",
     "exclude-node" => "Excluded specific node from export, can be used multiple times",
+    "no-exclude-top-nodes" => "Turn off exclusion of top-level nodes",
     "only-visible" => "Only export visible nodes",
     "file-storage" => "Store file content in specified folder, instead of embedding as base64 in export.",
     'include-relations' => 'Include all objects which are related in export',
@@ -117,6 +119,10 @@ $includeParents = false;
 if (Arr::get($options,'include-parents')) {
     $includeParents = true;
 }
+$includeTopNodes = false;
+if (Arr::get($options,'no-exclude-top-nodes')) {
+    $includeTopNodes = true;
+}
 $excludedNodes = array();
 if (Arr::get($options, 'exclude-node')) {
     foreach ($options['exclude-node'] as $excludeNode) {
@@ -127,6 +133,15 @@ if (Arr::get($options, 'exclude-node')) {
         list($matchType, $matchNodeUuid, $matchNodeId) = $nodeMatch;
         $excludedNodes[$matchNodeUuid] = true;
     }
+}
+// By default we include top-level nodes from exclusion, unless told to include them
+if (!$includeTopNodes) {
+    $contentNode = eZContentObjectTreeNode::fetch(ContentObject::mapTreeIdentifierToNode('content'));
+    $usersNode = eZContentObjectTreeNode::fetch(ContentObject::mapTreeIdentifierToNode('users'));
+    $mediaNode = eZContentObjectTreeNode::fetch(ContentObject::mapTreeIdentifierToNode('media'));
+    $excludedNodes[$contentNode->attribute('remote_id')] = true;
+    $excludedNodes[$usersNode->attribute('remote_id')] = true;
+    $excludedNodes[$mediaNode->attribute('remote_id')] = true;
 }
 $parentNodeId = Arr::get($options, 'parent-node');
 $onlyVisible = false;
@@ -454,6 +469,9 @@ EOT;
     $contentTypeClass = '\\Aplia\\Content\\ContentType';
     $initializedClasses = array();
 
+    if (!isset($data['content_objects'])) {
+        $data['content_objects'] = array();
+    }
     foreach ($data['content_objects'] as $contentObjectId => $contentObject) {
         $objectAttributes = (isset($contentObject['attributes']) && count($contentObject['attributes'])) ? $contentObject['attributes'] : array();
 
