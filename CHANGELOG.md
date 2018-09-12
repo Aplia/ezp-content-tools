@@ -2,6 +2,32 @@
 
 Changelog for the `content-tools` package.
 
+## 1.5.4
+
+- Support for object 'status' value, it is exported as a string.
+- References to objects which does not exist locally and have status draft or
+  archived are now removed.
+- Better display of name on referenced nodes, now displays root and top-level nodes.
+- All object relations are now exported.
+- Fixed issue in code for mapping tree identifier.
+- Fixed issue in importing files to file/image data-types.
+
+## 1.5.3
+
+- Support for exporting all parents of visited nodes.
+- Support for excluding nodes on export.
+- Detection of root node (id=1) on import, it is then mapped
+  to the same uuid of the local root node.
+- Fixed issue in updating ezuser data-type, if the attribute already has
+  an email set it will fail unique-check, applying workarounds in that case.
+- Imported objects are now part of remapping index if a transformer has
+  changed the uuid. For instance if a transformer code found an existing
+  object and changed it to use that uuid.
+
+## 1.5.2
+
+- Section identifier on imported objects are now remapped.
+
 ## 1.5.1
 
 - Relations on content object are now imported.
