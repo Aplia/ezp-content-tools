@@ -650,21 +650,21 @@ class ContentObject
             return self::$rootIdentifierToNode[$identifier];
         }
         $contentIni = eZINI::instance('content.ini');
-        if ($treeId === 'content') {
+        if ($identifier === 'content') {
             return $contentIni->variable('NodeSettings', 'RootNode');
-        } else if ($treeId === 'media') {
+        } else if ($identifier === 'media') {
             return $contentIni->variable('NodeSettings', 'MediaRootNode');
-        } else if ($treeId === 'user' || $treeId === 'users') {
+        } else if ($identifier === 'user' || $identifier === 'users') {
             return $contentIni->variable('NodeSettings', 'UserRootNode');
-        } else if ($treeId === 'top') {
+        } else if ($identifier === 'top') {
             return 1;
         } else {
             if ($contentIni->hasVariable('NodeSettings', 'RootNodes')) {
                 $rootNodes = $contentIni->variable('NodeSettings', 'RootNodes');
-                if (!isset($rootNodes[$treeId])) {
+                if (!isset($rootNodes[$identifier])) {
                     return null;
                 }
-                $nodeId = $rootNodes[$treeId];
+                $nodeId = $rootNodes[$identifier];
                 if (!substr($nodeId, 0, 5) === 'uuid:') {
                     // Store quick lookup for future checks
                     self::$rootIdentifierToNode[$identifier] = $nodeId;
