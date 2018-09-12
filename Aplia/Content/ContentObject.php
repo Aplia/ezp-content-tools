@@ -29,6 +29,9 @@ use eZContentObjectStateGroup;
  * Manager for eZContentObject instances, makes it easy to create new objects
  * or modify existing ones.
  * 
+ * Supported values in $params are:
+ * - status: The wanted status of an object, either 'draft', 'published', 'archived' or null.
+ * 
  * To create a new object do:
  * @code
  * $object = new ContentObject(array('identifier' => 'folder'));
@@ -89,6 +92,11 @@ class ContentObject
      * Owner is an ID of user object.
      */
     public $ownerId;
+    /**
+     * The wanted status of an object, either 'draft', 'published', 'archived' or null.
+     * null means don't modify the status.
+     */
+    public $status;
     public $isInWorkflow = false;
     public $clearCache = true;
     public $updateNodePath = true;
@@ -173,6 +181,9 @@ class ContentObject
             if (isset($params['states'])) {
                 $this->states = $params['states'];
             }
+            if (isset($params['status'])) {
+                $this->status = $params['status'];
+            }
             if (isset($params['publishedDate'])) {
                 $this->publishedDate = $params['publishedDate'];
             }
@@ -251,6 +262,20 @@ class ContentObject
             return (bool)eZContentObject::fetchByRemoteID($this->uuid, false);
         }
         return false;
+    }
+
+    /**
+     * Return the status identifier for the content object, or
+     * null if the object does not exist or has invalid status value.
+     * 
+     * @return string
+     */
+    public function status()
+    {
+        if (!$this->contentObject) {
+            return null;
+        }
+        return self::statusToIdentifier($this->contentObject->attribute('status'));
     }
 
     /**
@@ -658,6 +683,42 @@ class ContentObject
     }
 
     /**
+     * Turns a status value (integer) to an identifier (string) and returns it.
+     * 
+     * @return string Identifier for status or null if unknown
+     */
+    public static function statusToIdentifier($status)
+    {
+        if ($status == eZContentObject::STATUS_DRAFT) {
+            return "draft";
+        } else if ($status == eZContentObject::STATUS_PUBLISHED) {
+            return "published";
+        } else if ($status == eZContentObject::STATUS_ARCHIVED) {
+            return "archived";
+        } else {
+            return null;
+        }
+    }
+
+    /**
+     * Turns a status identifier (string) into a value (integer) and returns it.
+     * 
+     * @return int Value for status or null if unknown
+     */
+    public static function identifierToStatus($identifier)
+    {
+        if ($identifier === "draft") {
+            return eZContentObject::STATUS_DRAFT;
+        } else if ($identifier === "published") {
+            return eZContentObject::STATUS_PUBLISHED;
+        } else if ($identifier === "archived") {
+            return eZContentObject::STATUS_ARCHIVED;
+        } else {
+            return null;
+        }
+    }
+
+    /**
      * Creates the content object using current fields, attributes and locations.
      * If the content object already exists it throws an exception.
      * 
@@ -844,6 +905,12 @@ class ContentObject
                 $this->contentObject->assignState($state);
             }
         }
+    
+        $statusValue = self::identifierToStatus($this->status);
+        if ($statusValue !== null) {
+            $contentObject->setAttribute('status', $statusValue);
+        }
+
         $db->commit();
 
         $this->_locations = null;
@@ -1280,6 +1347,12 @@ class ContentObject
                 $contentObject->assignState($state);
             }
         }
+
+        $statusValue = self::identifierToStatus($this->status);
+        if ($statusValue !== null) {
+            $contentObject->setAttribute('status', $statusValue);
+        }
+
         $db->commit();
 
         if ($this->clearCache && ($modifiedNodes || $modifiedObject)) {

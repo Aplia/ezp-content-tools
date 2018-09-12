@@ -111,6 +111,7 @@ class ContentExporter
             'is_always_available' => (bool)$contentObject->isAlwaysAvailable(),
             'related' => array(),
             'main_node' => null,
+            'status' => ContentObject::statusToIdentifier($contentObject->attribute('status')),
             'states' => array(),
             'attributes' => array(),
             'translations' => array(),

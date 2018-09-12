@@ -183,6 +183,7 @@ class ContentObjectAttribute
                 'object_id' => $this->value->attribute('id'),
                 'object_uuid' => $this->value->remoteId(),
                 'name' => $this->value->name(),
+                'status' => ContentObject::statusToIdentifier($this->value->attribute('status')),
             );
         } else if ($type == 'ezobjectrelationlist') {
             if (!$this->value) {
@@ -204,6 +205,7 @@ class ContentObjectAttribute
                     'object_id' => $relatedObject->attribute('id'),
                     'object_uuid' => $relatedObject->remoteId(),
                     'name' => $relatedObject->name(),
+                    'status' => ContentObject::statusToIdentifier($relatedObject->attribute('status')),
                 );
             }
             return $values;
@@ -752,6 +754,7 @@ class ContentObjectAttribute
             $embed->setAttribute('uuid', $uuid);
             $embed->setAttribute('class_identifier', $identifier);
             $embed->setAttribute('name', $embedObject->name());
+            $embed->setAttribute('status', ContentObject::statusToIdentifier($embedObject->attribute('status')));
             $embedObjects[] = $embedObject;
         }
 
