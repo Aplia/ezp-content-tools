@@ -436,11 +436,20 @@ class ContentObject
      * @throw ValueError If the location does not have a node present
      * @return self
      */
-    public function updateLocation($location, array $fields)
+    public function updateLocation($location, array $fields=null)
     {
         $location = $this->processLocationValue($location);
         if ($fields) {
             $location = array_merge($fields, $location);
+        }
+        if (isset($location['uuid']) && !isset($location['node'])) {
+            $node = eZContentObjectTreeNode::fetchByRemoteID($location['uuid']);
+            $location['node'] = $node;
+            $parent = $node->fetchParent();
+            if ($parent) {
+                $location['parent_uuid'] = $parent->attribute('remote_id');
+                $location['parent_id'] = $parent->attribute('node_id');
+            }
         }
         $location = $this->processLocationEntry($location, /*checkExisting*/true);
         if (!isset($location['node'])) {
@@ -509,7 +518,9 @@ class ContentObject
             }
         }
 
-        if (!isset($location['parent_id']) && !isset($location['parent_node']) && !isset($location['parent_uuid']) && !isset($location['node'])) {
+        if ($checkExisting && !(isset($location['uuid']) || isset($location['node']) || isset($location['node_id']))) {
+            throw new UnsetValueError("No 'uuid', 'node' or 'node_id'value is set for existing location");
+        } else if (!isset($location['parent_id']) && !isset($location['parent_node']) && !isset($location['parent_uuid']) && !isset($location['node'])) {
             throw new UnsetValueError("No 'parent_id', 'parent_uuid', 'parent_node' or 'node' value is set for location");
         }
 
