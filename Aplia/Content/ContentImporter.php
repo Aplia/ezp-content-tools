@@ -1657,6 +1657,10 @@ class ContentImporter
             if ($this->verbose) {
                 echo "Node ${nodeData['uuid']} (name=${objectName}) already exists\n";
             }
+            if (isset($this->objectIndex[$nodeData['object_uuid']])) {
+                $objectData = $this->objectIndex[$nodeData['object_uuid']];
+                $this->verifyObjectContent($objectData);
+            }
         } else if ($nodeData['status'] === 'reference') {
             if ($this->verbose) {
                 echo "Node ${nodeData['uuid']} (name=${objectName}) is a reference\n";
@@ -2499,6 +2503,7 @@ class ContentImporter
                 $objectUuid = $attributeData['object_uuid'];
                 $objectId = Arr::get($attributeData, 'object_id');
                 $objectName = Arr::get($attributeData, 'name', '<unknown-name>');
+                $objectStatus = Arr::get($attributeData, 'status');
                 $object = eZContentObject::fetchByRemoteID($objectUuid);
                 if (!$object) {
                     $failed = false;
