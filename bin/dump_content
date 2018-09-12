@@ -484,15 +484,16 @@ EOT;
             $uuidString = isset($params['uuid']) ? ", uuid: ".$params['uuid'] : "";
             $className = $contentObject['class_identifier'];
             $classNameRepr = "\$" . underscoreToCamelCase($className) . "Type";
+            $objectNameRepr = "\$" . lcfirst(str_replace(" ", "", trim($objectName))) . ucfirst(underscoreToCamelCase($className));
 
             if (isset($initializedClasses[$className])) {
                 $initializedClasses[$className][] = $objectName.$uuidString;
             } else {
                 $initializedClasses[$className] = array($objectName.$uuidString);
-                echo "\n".$classNameRepr." = new ${contentTypeClass}('${className}');\n";
+                echo "\n${classNameRepr} = new ${contentTypeClass}('${className}');\n";
             }
 
-            echo "${classNameRepr}->contentObject(\n" . indentTextLines(var_export($params, true))."\n)\n";
+            echo "${objectNameRepr} = ${classNameRepr}->contentObject(\n" . indentTextLines(var_export($params, true))."\n)\n";
 
             if (isset($contentObject['locations'])) {
                 $params['locations'] = array();
