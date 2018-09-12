@@ -153,7 +153,27 @@ class ContentObject
      *
      * Then finally call update() to update existing object or create() to create a new object.
      */
-    public function __construct($params = null)
+    public function __construct(array $params = null)
+    {
+        if ($params) {
+            $this->set($params);
+        }
+    }
+
+    /**
+     * Set multiple field values from an array.
+     * 
+     * e.g.
+     * @code
+     * $type->set(array(
+     *     "ownerUuid" => "abcd",
+     *     "language" => "nor-NO",
+     * ))
+     * @endcode
+     * 
+     * @return self
+     */
+    public function set(array $params)
     {
         if ($params) {
             if (isset($params['id'])) {
@@ -243,6 +263,8 @@ class ContentObject
         if ($this->contentObject) {
             $this->loadContentObject();
         }
+
+        return $this;
     }
 
     /**
