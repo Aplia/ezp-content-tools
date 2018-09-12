@@ -133,7 +133,7 @@ EOT
                 if ($contentNode['priority']) {
                     $locationFields['priority'] = $contentNode['priority'];
                 }
-                if ($contentNode['visibility'] !== 'visibile') {
+                if ($contentNode['visibility'] !== 'visible') {
                     $locationFields['visibility'] = $contentNode['visibility'];
                 }
                 $treeIdentifier = \Aplia\Content\ContentObject::mapNodeToTreeIdentifier($contentNode['node_id']);
