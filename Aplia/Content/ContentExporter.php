@@ -263,7 +263,7 @@ class ContentExporter
         }
 
         if ($this->includeRelations) {
-            foreach ($contentObject->relatedContentObjectList() as $relatedObject) {
+            foreach ($contentObject->relatedContentObjectList(false, false, 0, false, array('AllRelations' => true)) as $relatedObject) {
                 $this->addObject($relatedObject);
             }
         }
