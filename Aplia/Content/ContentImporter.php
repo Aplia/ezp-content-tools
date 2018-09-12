@@ -2273,8 +2273,8 @@ class ContentImporter
                     echo "Object with UUID $objectUuid exists but needs an update for " . implode(", ", $updateTypes) . "\n";
                 }
             }
-        } else if ($objectData['status'] !== 'created') {
-            throw new ImportDenied("Tried to update object content on an object which has not been created/needs-update, status=${objectData['status']}");
+        } else if ($objectData['status'] !== 'created' && $objectData['status'] !== 'new') {
+            throw new ImportDenied("Tried to update object content on an object which has not been created/needs-update, status=${objectData['status']}, UUID=${objectUuid}");
         }
         if (!is_array($updateTypes)) {
             $updateTypes = array('object', 'attribute', 'relation', 'location');
@@ -2298,6 +2298,11 @@ class ContentImporter
             'language' => $mainLanguage,
             'ownerUuid' => $ownerUuid,
         ));
+        if ($objectData['status'] === 'new') {
+            if ($objectManager->exists()) {
+                throw new ImportDenied("Tried to update object content on an object which has not been created/needs-update, status=${objectData['status']}, UUID=${objectUuid}");
+            }
+        }
         $allowedAttributes = isset($objectData['update_attributes']) ? $objectData['update_attributes'] : null;
         if ($allowedAttributes !== null && $this->verbose) {
             if ($this->verbose) {
