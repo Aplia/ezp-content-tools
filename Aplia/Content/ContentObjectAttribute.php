@@ -22,6 +22,16 @@ class ContentObjectAttribute
     public $language;
     public $isDirty;
 
+    /**
+     * Set to true too see extra debug messages.
+     */
+    public $debug = false;
+    /**
+     * Object that is responsible for writing debug messages, must have a write() method.
+     * If null debug is written to stderr
+     */
+    public $debugWriter;
+
     protected $_contentIni;
     protected $_contentInputHandler;
 
@@ -32,6 +42,8 @@ class ContentObjectAttribute
         $this->id = Arr::get($fields, 'id');
         $this->language = Arr::get($fields, 'language');
         $this->contentAttribute = Arr::get($fields, 'contentAttribute');
+        $this->debug = Arr::get($fields, 'debug', false);
+        $this->debugWriter = Arr::get($fields, 'debugWriter');
         $this->isDirty = false;
     }
 
@@ -302,6 +314,7 @@ class ContentObjectAttribute
             return false;
         }
 
+        $identifier = $this->identifier;
         $type = $attribute->attribute('data_type_string');
         $dataType = $attribute->dataType();
         $value = $this->value;
@@ -319,6 +332,12 @@ class ContentObjectAttribute
         $asString = false;
         // If true then $value is set with setContent(), false then it consideres $asString
         $asContent = false;
+        if ($this->debug) {
+            $this->writeDebugLn(" attr update pre: '${identifier}': " . json_encode(array(
+                'type' => $type,
+                'value' => $value,
+            )));
+        }
         if ($type === 'ezxmltext') {
             $this->updateXmlTextType($attribute, $value, $object);
         } else if ($type === 'ezselection' && is_int($value)) {
@@ -657,7 +676,16 @@ class ContentObjectAttribute
                 }
             }
         }
+        // TODO:
+        // eztags
 
+        if ($this->debug) {
+            $this->writeDebugLn("  attr update result: '${identifier}': " . json_encode(array(
+                'identifier' => $this->identifier,
+                'type' => $type,
+                'value' => $value,
+            )));
+        }
         if ($asContent) {
             $attribute->setContent($value);
         } else if ($asString) {
@@ -665,7 +693,14 @@ class ContentObjectAttribute
                 throw new ValueError("Failed to import data using fromString(), data-type '${type}' reports false, value: " . var_export($value, true));
             }
         }
-        $attribute->store();
+        try {
+            $attribute->store();
+        } catch (\Exception $e) {
+            if ($this->debug) {
+                $this->writeDebugLn("Failed updating attribute: ${identifier}, ${type}");
+            }
+            throw $e;
+        }
         $this->contentAttribute = $attribute;
         $this->isDirty = false;
         return $attribute;
@@ -1077,6 +1112,19 @@ class ContentObjectAttribute
             'relatedObjects' => $parser->getRelatedObjectIDArray(),
             'linkedObjects' => $parser->getLinkedObjectIDArray(),
         ));
+    }
+
+    /**
+     * Writes text to the debug writer or stderr.
+     * A newline is appended to the text.
+     */
+    public function writeDebugLn($text)
+    {
+        if ($this->debugWriter) {
+            $this->debugWriter->write("${text}\n");
+        } else {
+            fwrite(STDERR, "${text}\n");
+        }
     }
 
     public function __exists($name)

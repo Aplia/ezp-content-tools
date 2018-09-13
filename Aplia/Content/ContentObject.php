@@ -116,6 +116,16 @@ class ContentObject
      $stateObjects;
     */
 
+    /**
+     * Set to true too see extra debug messages.
+     */
+    public $debug = false;
+    /**
+     * Object that is responsible for writing debug messages, must have a write() method.
+     * If null debug is written to stderr
+     */
+    public $debugWriter;
+
     static $rootIdentifierToNode = null;
     static $rootNodeToIdentifier = null;
 
@@ -258,6 +268,8 @@ class ContentObject
                     $this->addLocation($location);
                 }
             }
+            $this->debug = Arr::get($params, 'debug', false);
+            $this->debugWriter = Arr::get($params, 'debugWriter');
         }
 
         if ($this->contentObject) {
@@ -1081,7 +1093,10 @@ class ContentObject
         }
         if ($this->attributes === null) {
             foreach ($this->dataMap as $identifier => $contentAttribute) {
-                $this->attributes[$identifier] = new ContentObjectAttribute($identifer, null);
+                $this->attributes[$identifier] = new ContentObjectAttribute($identifer, null, array(
+                    'debug' => $this->debug,
+                    'debugWriter'=> $this->debugWriter,
+                ));
             }
         }
     }
@@ -1682,6 +1697,8 @@ class ContentObject
             }
         }
         if (!($attr instanceof ContentObjectAttribute)) {
+            $arr['debug'] = $this->debug;
+            $arr['debugWriter'] = $this->debugWriter;
             $attr = new ContentObjectAttribute($identifier, null, $attr);
         }
         $attr->setValue($content);
@@ -1693,6 +1710,8 @@ class ContentObject
     {
         if (!($attr instanceof ContentObjectAttribute)) {
             $value = $attr['value'];
+            $arr['debug'] = $this->debug;
+            $arr['debugWriter'] = $this->debugWriter;
             $attr = new ContentObjectAttribute($attr['identifier'], null, $attr);
             $attr->setValue($value);
         }
@@ -1951,6 +1970,19 @@ class ContentObject
             return null;
         }
         throw new AttributeError("No such content attribute: $identifer");
+    }
+
+    /**
+     * Writes text to the debug writer or stderr.
+     * A newline is appended to the text.
+     */
+    public function writeDebugLn($text)
+    {
+        if ($this->debugWriter) {
+            $this->debugWriter->write("${text}\n");
+        } else {
+            fwrite(STDERR, "${text}\n");
+        }
     }
 
     public function __isset($name)

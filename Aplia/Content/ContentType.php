@@ -64,6 +64,16 @@ class ContentType
     public $translations = array();
 
     /**
+     * Set to true too see extra debug messages.
+     */
+    public $debug = false;
+    /**
+     * Object that is responsible for writing debug messages, must have a write() method.
+     * If null debug is written to stderr
+     */
+    public $debugWriter;
+
+    /**
      * Controls whether the datamap for attributes has been loaded
      * from the DB or not.
      */
@@ -189,6 +199,8 @@ class ContentType
                     $this->addTranslation($language, $translation);
                 }
             }
+            $this->debug = Arr::get($fields, 'debug', false);
+            $this->debugWriter = Arr::get($fields, 'debugWriter');
         }
         return $this;
     }
@@ -1187,6 +1199,8 @@ class ContentType
         }
         $params['identifier'] = $this->identifier;
         $params['contentClass'] = $this->getContentClass();
+        $params['debug'] = $this->debug;
+        $params['debugWriter'] = $this->debugWriter;
         $object = new ContentObject($params);
         return $object;
     }
@@ -1206,6 +1220,19 @@ class ContentType
             return "Unknown Content Class";
         }
         return "Content Class $idText";
+    }
+
+    /**
+     * Writes text to the debug writer or stderr.
+     * A newline is appended to the text.
+     */
+    public function writeDebugLn($text)
+    {
+        if ($this->debugWriter) {
+            $this->debugWriter->write("${text}\n");
+        } else {
+            fwrite(STDERR, "${text}\n");
+        }
     }
 
     /**
