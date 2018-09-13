@@ -264,7 +264,7 @@ class ContentExporter
 
         if ($this->includeRelations) {
             foreach ($contentObject->relatedContentObjectList(false, false, 0, false, array('AllRelations' => true)) as $relatedObject) {
-                $this->addObject($relatedObject);
+                $this->addObject($relatedObject, /*withLocations*/true);
             }
         }
     }
@@ -283,7 +283,7 @@ class ContentExporter
         if (!isset($this->excludedNodes[$nodeUuid])) {
             if (!isset($this->objectMap[$objectId])) {
                 $contentObject = $node->object();
-                $this->addObject($contentObject);
+                $this->addObject($contentObject, /*withLocations*/true);
                 $this->objectMap[$objectId]['locations'][$nodeId] = $this->exportNode($node);
 
                 foreach ($contentObject->assignedNodes() as $assignedNode) {
@@ -494,7 +494,7 @@ class ContentExporter
                 return $attributeData;
             }
             foreach ($references as $referenceObject) {
-                $this->addObject($referenceObject);
+                $this->addObject($referenceObject, /*withLocations*/true);
             }
             return $attributeData;
         } if ($type == 'eztags') {
