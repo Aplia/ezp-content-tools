@@ -24,6 +24,7 @@ class ContentImporter
     public $askNew = true;
     public $verbose = true;
     public $fileStorage;
+    public $cli;
 
     // Maps section identifier to an object/class that will transform the content
     public $transformSection = array();
@@ -100,6 +101,9 @@ class ContentImporter
         }
         if (isset($options['fileStorage'])) {
             $this->fileStorage = $options['fileStorage'];
+        }
+        if (isset($options['cli'])) {
+            $this->cli = $options['cli'];
         }
         if (!$this->startNode) {
             throw new UnsetValueError("ContentImporter requires startNode/start_node set");
@@ -2821,6 +2825,15 @@ class ContentImporter
         echo "${prefix}`- ${symbol}${nodeName} (${nodeUuid}, o=${objectUuid})\n";
         foreach ($nodeData['children'] as $childUuid) {
             $this->printNode($this->nodeIndex[$childUuid], $level + 1);
+        }
+    }
+
+    public function warning($text)
+    {
+        if ($this->cli) {
+            $this->cli->warning($text);
+        } else {
+            echo "${text}\n";
         }
     }
 
