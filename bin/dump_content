@@ -143,7 +143,7 @@ if (!$includeTopNodes) {
     $excludedNodes[$usersNode->attribute('remote_id')] = true;
     $excludedNodes[$mediaNode->attribute('remote_id')] = true;
 }
-$parentNodeId = Arr::get($options, 'parent-node');
+
 $onlyVisible = false;
 if (Arr::get($options, 'only-visible')) {
     $onlyVisible = true;
@@ -252,68 +252,76 @@ function decodeNodeUuid($text)
     }
 }
 
-$parentNode = null;
-if (is_numeric($parentNodeId)) {
-    $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
-    if (!$parentNode) {
-        $script->shutdown(1, "Parent node $parentNodeId does not exist");
+$nodes = Arr::get($options, 'arguments');
+$parentNodeId = Arr::get($options, 'parent-node');
+if ($parentNodeId) {
+    $nodes[] = $parentNodeId;
+}
+foreach ($nodes as $idx => $parentNodeId) {
+    $parentNode = null;
+    if (is_numeric($parentNodeId)) {
+        $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
+        if (!$parentNode) {
+            $script->shutdown(1, "Parent node $parentNodeId does not exist");
+        }
+    } else if (preg_match("/^(ez)?node:([0-9]+)$/", $parentNodeId, $matches)) {
+        $parentNodeId = $matches[2];
+        $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
+        if (!$parentNode) {
+            $script->shutdown(1, "Parent node $parentNodeId does not exist");
+        }
+    } else if (preg_match("/^(ez)?node_uuid:([a-f0-9-]+)$/i", $parentNodeId, $matches)) {
+        $parentNodeUuid = strtolower(str_replace("-", "", $matches[2]));
+        $parentNode = \eZContentObjectTreeNode::fetchByRemoteID($parentNodeUuid);
+        if (!$parentNode) {
+            $script->shutdown(1, "Parent node with UUID $parentNodeUuid does not exist");
+        }
+    } else if (preg_match("/^(ez)?object:([0-9]+)$/", $parentNodeId, $matches)) {
+        $parentObjectId = $matches[2];
+        $parentObject = \eZContentObject::fetch($parentObjectId);
+        if (!$parentObject) {
+            $script->shutdown(1, "Parent object $parentObjectId does not exist");
+        }
+        $parentNode = $parentObject->mainNode();
+        if (!$parentNode) {
+            $script->shutdown(1, "Parent object $parentObjectId does not have main-node");
+        }
+        $parentNodeId = $parentNode->attribute('node_id');
+    } else if (preg_match("/^(ez)?object_uuid:([a-f0-9-]+)$/i", $parentNodeId, $matches)) {
+        $parentObjectUuid = strtolower(str_replace("-", "", $matches[2]));
+        $parentObject = \eZContentObject::fetchByRemoteID($parentObjectUuid);
+        if (!$parentObject) {
+            $script->shutdown(1, "Parent object with UUID $parentObjectUuid does not exist");
+        }
+        $parentNode = $parentObject->mainNode();
+        if (!$parentNode) {
+            $script->shutdown(1, "Parent object with UUID $parentObjectUuid does not have main-node");
+        }
+        $parentNodeId = $parentNode->attribute('node_id');
+    } else if (preg_match("/^path:(.+)$/", $parentNodeId, $matches)) {
+        $parentPath = $matches[1];
+        $parentNodeId = \eZURLAliasML::fetchNodeIDByPath($parentPath);
+        if (!$parentNodeId) {
+            $script->shutdown(1, "Parent node with path $parentPath does not exist");
+        }
+        $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
+        if (!$parentNode) {
+            $script->shutdown(1, "Parent node $parentNodeId for path $parentPath does not exist");
+        }
+    } else if ($parentNodeId) {
+        $parentPath = $parentNodeId;
+        $parentNodeId = \eZURLAliasML::fetchNodeIDByPath($parentPath);
+        if (!$parentNodeId) {
+            $script->shutdown(1, "Parent node with path $parentPath does not exist");
+        }
+        $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
+        if (!$parentNode) {
+            $script->shutdown(1, "Parent node $parentNodeId for path $parentPath does not exist");
+        }
+    } else {
+        $parentNode = \eZContentObjectTreeNode::fetch(1);
     }
-} else if (preg_match("/^(ez)?node:([0-9]+)$/", $parentNodeId, $matches)) {
-    $parentNodeId = $matches[2];
-    $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
-    if (!$parentNode) {
-        $script->shutdown(1, "Parent node $parentNodeId does not exist");
-    }
-} else if (preg_match("/^(ez)?node_uuid:([a-f0-9-]+)$/i", $parentNodeId, $matches)) {
-    $parentNodeUuid = strtolower(str_replace("-", "", $matches[2]));
-    $parentNode = \eZContentObjectTreeNode::fetchByRemoteID($parentNodeUuid);
-    if (!$parentNode) {
-        $script->shutdown(1, "Parent node with UUID $parentNodeUuid does not exist");
-    }
-} else if (preg_match("/^(ez)?object:([0-9]+)$/", $parentNodeId, $matches)) {
-    $parentObjectId = $matches[2];
-    $parentObject = \eZContentObject::fetch($parentObjectId);
-    if (!$parentObject) {
-        $script->shutdown(1, "Parent object $parentObjectId does not exist");
-    }
-    $parentNode = $parentObject->mainNode();
-    if (!$parentNode) {
-        $script->shutdown(1, "Parent object $parentObjectId does not have main-node");
-    }
-    $parentNodeId = $parentNode->attribute('node_id');
-} else if (preg_match("/^(ez)?object_uuid:([a-f0-9-]+)$/i", $parentNodeId, $matches)) {
-    $parentObjectUuid = strtolower(str_replace("-", "", $matches[2]));
-    $parentObject = \eZContentObject::fetchByRemoteID($parentObjectUuid);
-    if (!$parentObject) {
-        $script->shutdown(1, "Parent object with UUID $parentObjectUuid does not exist");
-    }
-    $parentNode = $parentObject->mainNode();
-    if (!$parentNode) {
-        $script->shutdown(1, "Parent object with UUID $parentObjectUuid does not have main-node");
-    }
-    $parentNodeId = $parentNode->attribute('node_id');
-} else if (preg_match("/^path:(.+)$/", $parentNodeId, $matches)) {
-    $parentPath = $matches[1];
-    $parentNodeId = \eZURLAliasML::fetchNodeIDByPath($parentPath);
-    if (!$parentNodeId) {
-        $script->shutdown(1, "Parent node with path $parentPath does not exist");
-    }
-    $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
-    if (!$parentNode) {
-        $script->shutdown(1, "Parent node $parentNodeId for path $parentPath does not exist");
-    }
-} else if ($parentNodeId) {
-    $parentPath = $parentNodeId;
-    $parentNodeId = \eZURLAliasML::fetchNodeIDByPath($parentPath);
-    if (!$parentNodeId) {
-        $script->shutdown(1, "Parent node with path $parentPath does not exist");
-    }
-    $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
-    if (!$parentNode) {
-        $script->shutdown(1, "Parent node $parentNodeId for path $parentPath does not exist");
-    }
-} else {
-    $parentNode = \eZContentObjectTreeNode::fetch(1);
+    $nodes[$idx] = $parentNode;
 }
 
 $options = array(
@@ -334,26 +342,40 @@ if ($adminUser) {
     $adminUser->loginCurrent();
 }
 
-$query = new \Aplia\Content\Query\QuerySet(array(
-    // Disable roles to get all nodes
-    'useRoles' => false,
-));
-if ($classNames) {
-    $query = $query->classes($classNames);
+$queries = array();
+foreach ($nodes as $parentNode) {
+    $query = new \Aplia\Content\Query\QuerySet(array(
+        // Disable roles to get all nodes
+        'useRoles' => false,
+    ));
+    if ($classNames) {
+        $query = $query->classes($classNames);
+    }
+    if ($parentNode) {
+        $query = $query->parentNode($parentNode);
+        $options['start_depth'] = $parentNode->attribute('depth');
+    }
+    if ($depth) {
+        $query = $query->depth($depth);
+    }
+    $query = $query->visibility($onlyVisible);
+    $queries[] = array(
+        'parentNode' => $parentNode,
+        'query' => $query,
+    );
 }
-if ($parentNode) {
-    $query = $query->parentNode($parentNode);
-    $options['start_depth'] = $parentNode->attribute('depth');
-}
-if ($depth) {
-    $query = $query->depth($depth);
-}
-$query = $query->visibility($onlyVisible);
 $prettyPrint = true;
 
 $exportChoices = array(
     'content_classes' => $classNames,
-    'parent' => array(
+    'queries' => array(),
+    'content_languages' => $languages,
+    'depth' => $depthChoice,
+    'visibility' => $onlyVisible ? 'visible' : 'visible+hidden',
+);
+foreach ($queries as $querySelection) {
+    $parentNode = $querySelection['parentNode'];
+    $exportChoices['queries'][] = array(
         'node_id' => (int)$parentNode->attribute('id'),
         'node_uuid' => $parentNode->remoteId(),
         'object_id' => (int)$parentNode->attribute('contentobject_id'),
@@ -361,25 +383,30 @@ $exportChoices = array(
         'path' => $parentNode->attribute('path_identification_string'),
         'url_alias' => $parentNode->urlAlias(),
         'name' => $parentNode->getName(),
-    ),
-    'content_languages' => $languages,
-    'depth' => $depthChoice,
-    'visibility' => $onlyVisible ? 'visible' : 'visible+hidden',
-);
+    );
+}
 if ($format === "line") {
-    if ($includeParent) {
-        echo $parentNode->attribute('name'), " - ", $parentNode->className(), " (", $parentNode->attribute('contentobject_id'), ")\n";
-    }
-    foreach ($query as $node) {
-        echo $node->attribute('name'), " - ", $node->className(), " (", $node->attribute('contentobject_id'), ")\n";
+    foreach ($queries as $querySelection) {
+        $parentNode = $querySelection['parentNode'];
+        $query = $querySelection['query'];
+        if ($includeParent) {
+            echo $parentNode->attribute('name'), " - ", $parentNode->className(), " (", $parentNode->attribute('contentobject_id'), ")\n";
+        }
+        foreach ($query as $node) {
+            echo $node->attribute('name'), " - ", $node->className(), " (", $node->attribute('contentobject_id'), ")\n";
+        }
     }
 } else if ($format === "ndjson") {
     $exporter = new \Aplia\Content\ContentExporter($options);
-    if ($includeParent) {
-        $exporter->addNode($parentNode);
-    }
-    if ($depth !== 0) {
-        $exporter->addQuery($query);
+    foreach ($queries as $querySelection) {
+        $parentNode = $querySelection['parentNode'];
+        $query = $querySelection['query'];
+        if ($includeParent) {
+            $exporter->addNode($parentNode);
+        }
+        if ($depth !== 0) {
+            $exporter->addQuery($query);
+        }
     }
     $exporter->finalize();
     $index = $exporter->createIndex();
@@ -393,11 +420,15 @@ if ($format === "line") {
     // TODO: encode export items
 } else if ($format === "json") {
     $exporter = new \Aplia\Content\ContentExporter($options);
-    if ($includeParent) {
-        $exporter->addNode($parentNode);
-    }
-    if ($depth !== 0) {
-        $exporter->addQuery($query);
+    foreach ($queries as $querySelection) {
+        $parentNode = $querySelection['parentNode'];
+        $query = $querySelection['query'];
+        if ($includeParent) {
+            $exporter->addNode($parentNode);
+        }
+        if ($depth !== 0) {
+            $exporter->addQuery($query);
+        }
     }
     $exporter->finalize();
     $data = array(
@@ -409,13 +440,17 @@ if ($format === "line") {
     );
     $data = array_merge($data, $exporter->getExportItems());
     echo \Aplia\Formats\Json::encode($data, $prettyPrint), "\n";
-} else if($format === "php") {
+} else if ($format === "php") {
     $exporter = new \Aplia\Content\ContentExporter($options);
-    if ($includeParent) {
-        $exporter->addNode($parentNode);
-    }
-    if ($depth !== 0) {
-        $exporter->addQuery($query);
+    foreach ($queries as $querySelection) {
+        $parentNode = $querySelection['parentNode'];
+        $query = $querySelection['query'];
+        if ($includeParent) {
+            $exporter->addNode($parentNode);
+        }
+        if ($depth !== 0) {
+            $exporter->addQuery($query);
+        }
     }
     $exporter->finalize();
 
