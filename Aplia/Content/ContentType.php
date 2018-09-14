@@ -116,7 +116,11 @@ class ContentType
                 $this->uuid = $fields['uuid'];
             }
             if (isset($fields['created'])) {
-                $this->created = $fields['created'];
+                $created = $fields['created'];
+                if (!($created instanceof DateTime || is_numeric($created))) {
+                    $created = new DateTime($created);
+                }
+                $this->created = $created;
             }
             if (isset($fields['language'])) {
                 $this->language = $fields['language'];

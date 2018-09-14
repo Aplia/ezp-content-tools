@@ -215,7 +215,11 @@ class ContentObject
                 $this->status = $params['status'];
             }
             if (isset($params['publishedDate'])) {
-                $this->publishedDate = $params['publishedDate'];
+                $date = $params['publishedDate'];
+                if (!($date instanceof DateTime || is_numeric($date))) {
+                    $date = new DateTime($date);
+                }
+                $this->publishedDate = $date;
             }
             if (isset($params['ownerId'])) {
                 $this->ownerId = $params['ownerId'];
