@@ -180,7 +180,7 @@ function parseNdjson(ContentImporter $importer, $filePath, $script) {
         }
     }
     if (trim($buffer)) {
-        $script->warning("Found non-empty data (count=" . count($buffer) . ") at end of file, data is ignored");
+        $cli->warning("Found non-empty data (count=" . count($buffer) . ") at end of file, data is ignored");
     }
 }
 
