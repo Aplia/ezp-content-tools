@@ -2141,10 +2141,8 @@ class ContentImporter
             if (isset($attributeData['xml'])) {
                 $xml = $attributeData['xml'];
                 $dom = new \DOMDocument('1.0', 'utf-8');
-                if (!@$dom->loadXML($this->value)) {
-                    return array(
-                        'value' => null,
-                    );
+                if (!@$dom->loadXML($xml)) {
+                    throw new ImportDenied("Attribute ${identifier} has invalid XML data: " . var_export(substr(str_replace("\n", " ", $xml), 0, 80), true));
                 }
                 $xpath = new \DOMXPath($dom);
 
