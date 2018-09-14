@@ -305,6 +305,9 @@ class ContentImporter
                 }
                 foreach ($attributeMap as $importAttribute => $mapping) {
                     if ($mapping['action'] === 'skip') {
+                        if ($this->verbose) {
+                            echo "Class attribute ${existingClass}/${importAttribute} should be skipped\n";
+                        }
                         $attributeMap[$importAttribute]['type'] = array(
                             'action' => 'skip',
                             'identifier' => null,
