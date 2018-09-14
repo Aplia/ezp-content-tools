@@ -266,17 +266,29 @@ class ContentImporter
                 if (!$ini->hasGroup($iniGroup)) {
                     throw new ImportDenied("Class mapping for '$newClass' does not exist in INI file, group '$iniGroup' not found");
                 }
-                if (!$ini->hasVariable($iniGroup, 'Class')) {
-                    throw new ImportDenied("Class mapping for '$newClass' does not exist in INI file, no 'Class' entry in group '$iniGroup'");
+                if ($ini->hasVariable($iniGroup, 'Class')) {
+                    $existingClass = $ini->variable($iniGroup, 'Class');
+                } else {
+                    $existingClass = $newClass;
                 }
-                $existingClass = $ini->variable($iniGroup, 'Class');
+                $classAction = $ini->hasVariable($iniGroup, 'Action') ? $ini->variable($iniGroup, 'Action') : 'use';
+                if ($classAction !== 'skip' && $classAction !== 'use') {
+                    throw new ImportDenied("Class mapping for '$newClass': Action='${classAction}' is not valid, use either 'use' or 'skip'");
+                }
                 $attributeMap = array();
                 if ($ini->hasVariable($iniGroup, 'AttributeMap')) {
-                    $attributeMap = $ini->variable($iniGroup, 'AttributeMap');
-                    foreach ($attributeMap as $key => $data) {
-                        $attributeMap[$key] = array(
-                            'identifier' => $data,
-                        );
+                    $attributeMapSettings = $ini->variable($iniGroup, 'AttributeMap');
+                    foreach ($attributeMapSettings as $key => $data) {
+                        if ($data === ':skip') {
+                            $attributeMap[$key] = array(
+                                'action' => 'skip',
+                            );
+                        } else {
+                            $attributeMap[$key] = array(
+                                'action' => 'use',
+                                'identifier' => $data,
+                            );
+                        }
                     }
                 }
                 $contentClass = \eZContentClass::fetchByIdentifier($existingClass);
@@ -291,16 +303,29 @@ class ContentImporter
                         'type' => $attributeType,
                     );
                 }
-                foreach ($attributeMap as $newAttribute => $mapping) {
+                foreach ($attributeMap as $importAttribute => $mapping) {
+                    if ($mapping['action'] === 'skip') {
+                        $attributeMap[$importAttribute]['type'] = array(
+                            'action' => 'skip',
+                            'identifier' => null,
+                            'type' => null,
+                        );
+                        continue;
+                    }
                     $existingAttribute = $mapping['identifier'];
                     if (!isset($attributes[$existingAttribute])) {
-                        throw new ImportDenied("Cannot map content class attribute '$newClass/$newAttribute' to '$existingClass/$existingAttribute', '$existingClass/$existingAttribute' does not exist");
+                        throw new ImportDenied("Cannot map content class attribute '$newClass/$importAttribute' to '$existingClass/$existingAttribute', '$existingClass/$existingAttribute' does not exist");
                     }
-                    $attributeMap[$newAttribute]['type'] = $attributes[$existingAttribute]['type'];
+                    $attributeMap[$importAttribute]['type'] = array(
+                        'action' => 'transform',
+                        'identifier' => $existingAttribute,
+                        'type' => $attributes[$existingAttribute]['type'],
+                    );
                 }
                 $this->mapClass[$newClass] = array(
                     'identifier' => $existingClass,
                     'attributeMap' => $attributeMap,
+                    'action' => $classAction,
                 );
             }
         }
@@ -454,6 +479,7 @@ class ContentImporter
         foreach (\eZContentClass::fetchAllClasses() as $class) {
             $attributes = array();
             $dataMap = $class->dataMap();
+            $identifier = $class->attribute('identifier');
             foreach ($dataMap as $attributeIdentifier => $attribute) {
                 $attributes[$attributeIdentifier] = array(
                     'id' => $attribute->attribute('id'),
@@ -462,11 +488,12 @@ class ContentImporter
                     'can_translate' => $attribute->attribute('can_translate') && $attribute->dataType()->isTranslatable(),
                 );
             }
-            $this->classIndex[$class->attribute('identifier')] = array(
+            $this->classIndex[$identifier] = array(
                 'id' => $class->attribute('id'),
                 'status' => 'reference',
-                'identifier' => $class->attribute('identifier'),
+                'identifier' => $identifier,
                 'attributes' => $attributes,
+                'status' => 'reference',
             );
         }
         return $this->classIndex;
@@ -1076,21 +1103,16 @@ class ContentImporter
         }
         $identifier = $classData['identifier'];
         $remappedTypeMap = null;
-        if (isset($this->transformClass[$identifier])) {
-            $newData = $this->transformClass[$identifier]->transform($classData);
-            if ($newData) {
-                $classData = $newData;
-                $identifier = $classData['identifier'];
-            }
-        } else if (isset($this->transformClass['*'])) {
-            $newData = $this->transformClass['*']->transform($classData);
-            if ($newData) {
-                $classData = $newData;
-                $identifier = $classData['identifier'];
-            }
-        } else if (isset($this->mapClass[$identifier])) {
+        $skipMap = array();
+        if (isset($this->mapClass[$identifier])) {
             $newData = $this->mapClass[$identifier];
             if ($newData) {
+                if ($newData['action'] === 'skip') {
+                    if ($this->verbose) {
+                        echo "Content class ${identifier} should not be imported, skipped\n";
+                    }
+                    return;
+                }
                 if (isset($newData['identifier'])) {
                     $classData['identifier'] = $newData['identifier'];
                 }
@@ -1105,10 +1127,14 @@ class ContentImporter
                         foreach ($typeMap as $newIdentifier => $newType) {
                             if (isset($newData['attributeMap'][$newIdentifier])) {
                                 $mapping = $newData['attributeMap'][$newIdentifier];
-                                if (isset($mapping['type'])) {
-                                    $newType = $mapping['type'];
+                                if ($mapping['action'] === 'skip') {
+                                    $skipMap[$newIdentifier] = true;
+                                } else if ($mapping['action'] === 'change') {
+                                    if (isset($mapping['type'])) {
+                                        $newType = $mapping['type'];
+                                    }
+                                    $newTypeMap[$mapping['identifier']] = $newType;
                                 }
-                                $newTypeMap[$mapping['identifier']] = $newType;
                             } else {
                                 $newTypeMap[$newIdentifier] = $newType;
                             }
@@ -1119,11 +1145,31 @@ class ContentImporter
                 $identifier = $classData['identifier'];
             }
         }
+        if (isset($this->transformClass[$identifier])) {
+            $newData = $this->transformClass[$identifier]->transform($classData);
+            if ($newData) {
+                $classData = $newData;
+                $identifier = $classData['identifier'];
+            }
+        }
+        if (isset($this->transformClass['*'])) {
+            $newData = $this->transformClass['*']->transform($classData);
+            if ($newData) {
+                $classData = $newData;
+                $identifier = $classData['identifier'];
+            }
+        }
         $sparse = Arr::get($classData, 'sparse', false);
         if (!$sparse) {
             throw new ImportDenied("Import of full content-class definitions are not yet supported");
         }
         else {
+            if (isset($this->mapClass[$identifier]) && $this->mapClass[$identifier]['action'] === 'skip') {
+                if ($this->verbose) {
+                    echo "Content class ${identifier} should not be imported, skipped\n";
+                }
+                return;
+            }
             if (!isset($this->classIndex[$identifier])) {
                 throw new ImportDenied("Import requires content-class $identifier but it does not exist on site, cannot import content");
             }
@@ -1140,7 +1186,9 @@ class ContentImporter
             // Verify that all required attributes exist in class and are of required type
             // TODO: Should be a way to allow certain data-type mismatches, e.g. ezstring to eztext, maybe via transforms?
             foreach ($typeMap as $attributeIdentifier => $attributeType) {
-                if (!isset($classDefinition['attributes'][$attributeIdentifier])) {
+                if (isset($skipMap[$identifier])) {
+                    continue;
+                } else if (!isset($classDefinition['attributes'][$attributeIdentifier])) {
                     throw new ImportDenied("Import of sparse content-class $identifier failed, attribute '$attributeIdentifier' does not exist");
                 }
                 $attributeDefinition = $classDefinition['attributes'][$attributeIdentifier];
@@ -1222,6 +1270,28 @@ class ContentImporter
         $data['translations'][$language]['attributes'][$identifier] = $value;
     }
 
+    protected static function remapAttributes($attributes, $mapping)
+    {
+        $newAttributes = array();
+        foreach ($attributes as $attributeIdentifier => $attributeData) {
+            if (!isset($mapping[$attributeIdentifier])) {
+                // No change to attribute
+                $newAttributes[$attributeIdentifier] = $attributeData;
+                continue;
+            }
+            $attributeTransform = $mapping[$attributeIdentifier];
+            if ($attributeTransform['action'] === 'skip') {
+                // Skip it
+            } else if ($attributeTransform['action'] === 'transform') {
+                $newIdentifier = $attributeTransform['identifier'];
+                $newAttributes[$newIdentifier] = $attributeData;
+            } else {
+                throw new ImportDenied("Mapping for class attribute $attributeIdentifier has unknown 'action' value: " . var_export($attributeTransform['action'], true));
+            }
+        }
+        return $newAttributes;
+    }
+
     public function importContentObject($objectData)
     {
         if (!isset($objectData['uuid'])) {
@@ -1258,6 +1328,25 @@ class ContentImporter
         $objectData = $this->transformContentObject($objectData);
         $uuid = $objectData['uuid'];
 
+        $classIdentifier = Arr::get($objectData, 'class_identifier');
+        $classMap = null;
+        if (isset($this->mapClass[$classIdentifier])) {
+            $classMap = $this->mapClass[$classIdentifier];
+            if ($classMap['action'] === 'skip') {
+                if ($this->verbose) {
+                    echo "Content-object with UUID $uuid using class ${classIdentifier} should not be imported, skipped\n";
+                }
+                return;
+            }
+            if ($classIdentifier !== $classMap['identifier']) {
+                $newClassIdentifier = $classMap['identifier'];
+                if ($this->verbose) {
+                    echo "Content-object with UUID $uuid using class ${classIdentifier} switch class to ${newClassIdentifier}\n";
+                }
+                $classIdentifier = $newClassIdentifier;
+            }
+        }
+
         // If the object already exist then no objectIndex record is performed,
         // however the any new locations will still be added further down
         $isInIndex = false;
@@ -1271,11 +1360,27 @@ class ContentImporter
         } else {
             $mainNodeUuid = Arr::get(Arr::get($objectData, 'main_node'), 'uuid');
 
+            $attributes = Arr::get($objectData, 'attributes');
+            $translations = Arr::get($objectData, 'translations');
+            if ($classMap) {
+                $attributeMaps = $classMap['attributeMap'];
+                // Remove and rename attributes
+                if ($attributes) {
+                    $attributes = self::remapAttributes($attributes, $attributeMaps);
+                }
+                if ($translations) {
+                    foreach ($translations as $language => $translationData) {
+                        if (isset($translationData['attributes'])) {
+                            $translations[$language]['attributes'] = self::remapAttributes($translationData['attributes'], $attributeMaps);
+                        }
+                    }
+                }
+            }
             $objectEntry = array(
                 'uuid' => $uuid,
                 'status' => 'new',
                 'object_status' => Arr::get($objectData, 'status'),
-                'class_identifier' => Arr::get($objectData, 'class_identifier'),
+                'class_identifier' => $classIdentifier,
                 'original_uuid' => Arr::get($objectData, 'original_uuid'),
                 'original_id' => Arr::get($objectData, 'object_id'),
                 'original_section_identifier' => Arr::get($objectData, 'original_section_identifier'),
@@ -1284,8 +1389,8 @@ class ContentImporter
                 'is_always_available' => Arr::get($objectData, 'is_always_available'),
                 'states' => Arr::get($objectData, 'states'),
                 'published_date' => Arr::get($objectData, 'published_date'),
-                'translations' => Arr::get($objectData, 'translations'),
-                'attributes' => Arr::get($objectData, 'attributes'),
+                'translations' => $translations,
+                'attributes' => $attributes,
                 'main_node_uuid' => null,
                 'original_main_node_uuid' => $preMain['original_uuid'],
                 'relations' => array(),
