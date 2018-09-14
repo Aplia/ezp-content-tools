@@ -1149,14 +1149,14 @@ class ContentImporter
             }
         }
         if (isset($this->transformClass[$identifier])) {
-            $newData = $this->transformClass[$identifier]->transform($classData);
+            $newData = $this->transformClass[$identifier]->transformContentClass($classData);
             if ($newData) {
                 $classData = $newData;
                 $identifier = $classData['identifier'];
             }
         }
         if (isset($this->transformClass['*'])) {
-            $newData = $this->transformClass['*']->transform($classData);
+            $newData = $this->transformClass['*']->transformContentClass($classData);
             if ($newData) {
                 $classData = $newData;
                 $identifier = $classData['identifier'];
