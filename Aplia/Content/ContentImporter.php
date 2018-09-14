@@ -2564,7 +2564,7 @@ class ContentImporter
                 if (!$relatedObject) {
                     throw new ImportDenied("Object with UUID ${objectUuid} has a relation to object with UUID ${relation['uuid']} but the object does not exist");
                 }
-                eZContentObject::addContentObjectRelation($relatedObject['id']);
+                $contentObject->addContentObjectRelation($relatedObject['id']);
                 $objectData['relations'][$idx]['status'] = 'created';
             }
         }
