@@ -1486,9 +1486,6 @@ class ContentImporter
         } else {
             echo "Import contains: ", implode(", ", $types), "\n";
         }
-        if ($this->promptYesOrNo("Do you wish to continue with import? [yes|no] ") !== "yes") {
-            throw new ImportDenied("Import stopped");
-        }
         $this->hasIndex = true;
     }
 
@@ -1510,9 +1507,6 @@ class ContentImporter
             echo "Import contains: ", implode(", ", $counts), "\n";
         } else {
             echo "Import contains: ", implode(", ", $types), "\n";
-        }
-        if ($this->promptYesOrNo("Do you wish to continue with import? [yes|no] ") !== "yes") {
-            throw new ImportDenied("Import stopped");
         }
         $this->hasBundle = true;
     }

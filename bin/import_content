@@ -204,6 +204,11 @@ try {
         $importer->loadConfiguration($configFile);
     }
 
+    echo "This will import " . count($files) . " files\n";
+    if ($importer->promptYesOrNo("Do you wish to continue with import? [yes|no] ") !== "yes") {
+        throw new ImportDenied("Import stopped");
+    }
+
     foreach ($files as $filePath) {
         echo "Processing import file $filePath\n";
         if (!file_exists($filePath)) {
