@@ -111,6 +111,7 @@ if ($tempPath && !file_exists($tempPath)) {
 $options = array(
     'startNode' => $parentNode,
     'fileStorage' => $tempPath,
+    'cli' => $cli,
 );
 
 // Login as admin user to make sure we have access to all content
