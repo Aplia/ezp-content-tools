@@ -2,6 +2,19 @@
 
 Changelog for the `content-tools` package.
 
+## 1.5.6
+
+- All locations of visited nodes are now part of export.
+- The same object may now be imported multiple times, e.g in different files,
+  in the same import run. The object data is only taken once but locations
+  from all will be merged.
+- Prompt for starting import now only happens once, not per file.
+- Fixed class transformation, it will now change the class used and has support
+  for filtering out certain attributes.
+- Fixed issue with ezxmltext being emptied on import.
+- Support for enabling debug output, can be used to debug certain aspects of the content system.
+- Support for date strings for ContentObject->publishedDate and ContentType->created.
+
 ## 1.5.5
 
 - Support for moving locations with ContentObject::moveLocation().
