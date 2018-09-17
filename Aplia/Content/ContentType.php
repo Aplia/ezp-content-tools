@@ -553,6 +553,9 @@ class ContentType
         }
         foreach ($this->attributesRemove as $identifier => $attrData) {
             $classAttribute = $contentClass->fetchAttributeByIdentifier($identifier);
+            if (!$classAttribute) {
+                throw new ObjectDoesNotExist("The attribute '$identifier' does not exist on content-class '" . $contentClass->attribute('identifier') . "'");
+            }
             $classAttribute->removeThis();
             unset($this->_attributes[$identifier]);
         }
