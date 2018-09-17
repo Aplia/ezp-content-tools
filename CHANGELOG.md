@@ -2,6 +2,37 @@
 
 Changelog for the `content-tools` package.
 
+## 1.5.7
+
+- Added a batch processor class for easily modifying multiple objects.
+  It takes a QuerySet object as parameter (or parameters for QuerySet)
+  and takes care of iterating over all objects in that set and calling
+  a callback. This class can either be used directly by passing
+  functions into the callbacks or by subclassing.
+  The processor defaults to iterating over objects (ie. main nodes) and
+  will pass a ContentObject instance to the callback, however it may be
+  changed to visiting nodes instead.
+  There are also callbacks for when an object was modified, skipped or
+  one for all visited nodes/objects.
+- Added script bin/process_content for running batch processing on objects.
+- getAttribute is now getContentAttributeValue and it only returns the
+  value for the ContentObjectAttribute instance. Added
+  getRawAttributeValue to get the raw content value directlry from
+  data-type. getContentAttribute returns the ContentObjectAttribute
+  instance.
+- Added ContentObject::lookupNode to return nodes from string formats.
+  The formats are:
+    * node:<number> - Use as node ID to find node 
+    * node_uuid:<uuid> - Use as remote ID to find node
+    * object:<number> - Use as object ID to find object and main node
+    * object_uuid:<uuid> - Use as object remote ID to find object and main node
+    * path:<path> - Use as url-alias path to find node
+- Fixed import of DateTime
+- Fixed checking for existing attribute before trying to remove.
+- Fixed migration to include all content languages.
+- Fixed value extraction for ezselection, no selection now results in null.
+
+
 ## 1.5.6
 
 - All locations of visited nodes are now part of export.
