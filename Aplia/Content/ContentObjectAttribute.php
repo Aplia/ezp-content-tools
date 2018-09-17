@@ -95,8 +95,11 @@ class ContentObjectAttribute
                 }
             }
         } else if ($type == 'ezselection') {
-            // ezselection returns an array with ids
+            // ezselection returns an array with ids, or null if selection is not set
             $value = $attribute->content();
+            if (!$value || (is_array($value) && count($value) === 1 && array_slice($value, 0, 1)[0] === "")) {
+                $value = null;
+            }
         } else if ($type == 'ezdate' || $type == 'ezdatetime') {
             $value = $attribute->toString();
             if ($value) {
