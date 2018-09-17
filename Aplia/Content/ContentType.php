@@ -1,6 +1,7 @@
 <?php
 namespace Aplia\Content;
 
+use DateTime;
 use Aplia\Support\Arr;
 use Aplia\Content\Exceptions\ObjectDoesNotExist;
 use Aplia\Content\Exceptions\ObjectAlreadyExist;
@@ -446,7 +447,7 @@ class ContentType
         $isDirty = false;
         if ($this->created) {
             $created = $this->created;
-            if ($created instanceof \DateTime) {
+            if ($created instanceof DateTime) {
                 $created = $created->getTimestamp();
             }
             $this->_contentClass->setAttribute('created', $created);
