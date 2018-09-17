@@ -3,6 +3,7 @@ namespace Aplia\Migration;
 use eZScript;
 use eZDB;
 use eZINI;
+use eZContentLanguage;
 
 /**
  * Defines the configuration for the migration system.
@@ -25,6 +26,9 @@ class Configuration
         $script->startup();
         $script->initialize();
         $script->shutdown();
+
+        // Make sure all translations are fetched
+        eZContentLanguage::setPrioritizedLanguages(eZContentLanguage::fetchLocaleList());
     }
 
     /**
