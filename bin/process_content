@@ -1,0 +1,94 @@
+#!/usr/bin/env php
+<?php
+use Aplia\Support\Arr;
+use \eZCLI;
+use \eZScript;
+use \eZContentLanguage;
+use Aplia\Content\Query\QuerySet;
+use Aplia\Content\ContentObject;
+use Aplia\Content\BatchProcessor;
+
+@include_once 'config.php';
+require_once 'autoload.php';
+
+set_time_limit(0);
+
+$cli = \eZCLI::instance();
+$script = \eZScript::instance(
+    array(
+        'description' =>
+            "Export content-objects and referenced definitions",
+        'use-session' => false,
+        'use-modules' => true,
+        'use-extensions' => true,
+    )
+);
+$script->startup();
+$options = $script->getOptions("[class:][parent-node:][depth:][only-visible]", "", array(
+    "class" => "Limit processing to only these type of content-classes. Comma separated list",
+    "parent-node" => "Choose starting point for processing, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id> or path:<alias-path>",
+    "depth" => "Choose how deep in the tree structure to process, defaults to 1 level. Use * for unlimited",
+    "only-visible" => "Only process visible nodes",
+));
+$script->initialize();
+
+// Make sure all translations are fetched
+eZContentLanguage::setPrioritizedLanguages(eZContentLanguage::fetchLocaleList());
+
+$classNames = Arr::get($options, 'class');
+if ($classNames) {
+    $classNames = explode(",", $classNames);
+} else {
+    $classNames = null;
+}
+
+$parentNode = null;
+$parentNodeId = Arr::get($options, 'parent-node');
+if ($parentNodeId) {
+    $parentNode = ContentObject::lookupNode($parentNodeId);
+}
+
+$depth = Arr::get($options, 'depth');
+$depthChoice = $depth;
+if ($depth === null || $depth === '') {
+    // Default to unlimited depth
+    $depth = null;
+    $depthChoice = $depth;
+} else if ($depth === '*') {
+    $depth = null;
+    $depthChoice = '*';
+} else if (is_numeric($depth) && $depth >= 0) {
+    $depth = (int)$depth;
+    $depthChoice = $depth;
+} else {
+    $script->shutdown(1, "--depth must be a positive integer or * for unlimited depth");
+}
+
+$onlyVisible = false;
+if (Arr::get($options, 'only-visible')) {
+    $onlyVisible = true;
+}
+
+$query = new QuerySet();
+if ($classNames) {
+    $query = $query->classes($classNames);
+}
+if ($depth !== null) {
+    $query = $query->depth($depth);
+}
+if ($onlyVisible) {
+    $query = $query->visibility(true);
+}
+if ($parentNode) {
+    $query = $query->parentNode($parentNode);
+}
+
+$processor = new BatchProcessor(array(
+    'query' => $query,
+    'visited' => function ($node) {
+        echo "'", $node->attribute('name'), "' (", $node->attribute('class_identifier'), "), node_id: ", $node->attribute('node_id'), ", url: ", $node->url(), "\n";
+    }
+));
+$processor->process();
+
+$script->shutdown();

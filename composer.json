@@ -23,7 +23,8 @@
     "bin": [
         "bin/dump_contentclass",
         "bin/dump_content",
-        "bin/import_content"
+        "bin/import_content",
+        "bin/process_content"
     ],
     "autoload": {
         "psr-4": {
