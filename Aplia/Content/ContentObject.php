@@ -1119,7 +1119,7 @@ class ContentObject
                 'parent_id' => $node->attribute('parent_node_id'),
                 'node' => $node,
                 'is_main' => $node->isMain(),
-                'status' => 'update',
+                'status' => 'nop',
             );
         }
     }
