@@ -1956,16 +1956,30 @@ class ContentObject
         return $stateObjects;
     }
 
-    public function getAttribute($identifier)
+    /**
+     * Returns the value for the specified object attribute.
+     * Attribute is specified using identifier.
+     * 
+     * @throws AttributeError if the attribute does not exist
+     */
+    public function getContentAttributeValue($identifier)
+    {
+        $attribute = $this->getContentAttribute($identifier);
+        return $attribute->value;
+    }
+
+    /**
+     * Returns the content value for the specified object attribute.
+     * Attribute is specified using identifier.
+     * Note: The value is the raw value returned from the attribute
+     * content() method.
+     * 
+     * @throws AttributeError if the attribute does not exist
+     */
+    public function getRawAttributeValue($identifier)
     {
         if ($this->attributes === null) {
             $this->loadContentObject();
-        }
-        if (isset($this->attributesChange[$identifer])) {
-            return $this->attributesChange[$identifer]->value;
-        }
-        if (isset($this->attributes[$identifer]) && $this->attributes[$identifer]->isDirty) {
-            return $this->attributes[$identifer]->value;
         }
         if (isset($this->dataMap[$identifer])) {
             if ($this->dataMap[$identifer]->hasContent()) {
@@ -1974,6 +1988,33 @@ class ContentObject
             return null;
         }
         throw new AttributeError("No such content attribute: $identifer");
+    }
+
+    /**
+     * Returns the ContentObjectAttribute instance for the given content-object attribute.
+     * 
+     * @throws AttributeError if the attribute does not exist
+     * @return ContentObjectAttribute
+     */
+    public function getContentAttribute($identifier)
+    {
+        if ($this->attributes === null) {
+            $this->loadContentObject();
+        }
+        if (isset($this->attributesChange[$identifier])) {
+            return $this->attributesChange[$identifier];
+        }
+        if (isset($this->attributes[$identifier]) && $this->attributes[$identifier]->isDirty) {
+            return $this->attributes[$identifier];
+        }
+        if (isset($this->dataMap[$identifier])) {
+            $this->attributes[$identifier] = new ContentObjectAttribute($identifier, null, array(
+                'contentAttribute' => $this->dataMap[$identifier],
+            ));
+            $this->attributes[$identifier]->loadValue($this->contentObject);
+            return $this->attributes[$identifier];
+        }
+        throw new AttributeError("No such content attribute: $identifier");
     }
 
     /**
