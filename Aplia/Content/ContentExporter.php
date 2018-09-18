@@ -162,6 +162,13 @@ class ContentExporter
                 'uuid' => $owner->remoteId(),
                 'name' => $owner->name(),
             );
+            // The owner should be an object with an ezuser entry, if so record email and username
+            // This makes it easier to lookup ownership if the uuid don't match between two sites
+            $ownerUser = eZUser::fetch($owner->attribute('id'));
+            if ($ownerUser) {
+                $data['owner']['email'] = $ownerUser->attribute('email');
+                $data['owner']['username'] = $ownerUser->attribute('login');
+            }
         }
 
         // Add translations for name and attributes
