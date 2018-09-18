@@ -52,6 +52,8 @@ class ContentImporter
     public $transformObjectByClass = array();
     // Transformations to run all content objects
     public $transformObjects = array();
+    // Transformations for links to owners
+    public $transformObjectOwner = array();
     // Maps an object UUID to a new object structure, the structure either has the
     // object data for the replacement object, or has 'removed' => true to remove it.
     // This is used for nodes, parents, ownership and relations.
@@ -401,6 +403,16 @@ class ContentImporter
             }
         }
 
+        if ($ini->hasVariable('Object', 'TransformOwner')) {
+            $transforms = $ini->variable('Object', 'TransformOwner');
+            foreach ($transforms as $className) {
+                if (!class_exists($className)) {
+                    throw new ImportDenied("Transform class $className used for content objects owner does not exist");
+                }
+                $this->transformObjectOwner[] = new $className($this, $ini);
+            }
+        }
+
         if ($ini->hasVariable('Object', 'Transform')) {
             $transforms = $ini->variable('Object', 'Transform');
             foreach ($transforms as $className) {
@@ -573,6 +585,7 @@ class ContentImporter
         // Remap owner
         $owner = Arr::get($objectData, 'owner');
         $ownerUuid = Arr::get($owner, 'uuid');
+        $owner['original_uuid'] = $ownerUuid;
         if ($ownerUuid && isset($this->mapObject[$ownerUuid])) {
             $newOwner = $this->mapObject[$ownerUuid];
             $newOwnerUuid = $newOwner['uuid'];
@@ -1854,7 +1867,16 @@ class ContentImporter
         // Add owner if it exists in database
         if (isset($objectData['owner']['uuid']) && $objectData['owner']['uuid']) {
             $removeOwner = false;
-            $ownerUuid = $objectData['owner']['uuid'];
+            $owner = $objectData['owner'];
+            $ownerUuid = $owner['uuid'];
+            foreach ($this->transformObjectOwner as $ownerTransformer) {
+                $newOwner = $ownerTransformer->transformOwner($owner);
+                if ($newOwner) {
+                    $owner = $newOwner;
+                    $objectData['owner'] = $newOwner;
+                    $ownerUuid = $owner['uuid'];
+                }
+            }
             // Check remapping of ownership again, in case it was changed after imported
             if (isset($this->mapObject[$ownerUuid])) {
                 if (isset($this->mapObject[$ownerUuid]['removed'])) {
