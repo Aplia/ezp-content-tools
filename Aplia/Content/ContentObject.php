@@ -1676,10 +1676,11 @@ class ContentObject
             }
             if ($isHidden != (bool)$node->attribute('is_hidden') || $isInvisible != (bool)$node->attribute('is_invisible')) {
                 $node->setAttribute('is_hidden', $isHidden);
-                $node->setAttribute('is_invisibile', $isInvisible);
+                $node->setAttribute('is_invisible', $isInvisible);
                 $changes[] = 'is_hidden';
                 $changes[] = 'is_invisible';
             }
+            // TODO: Support a 'visibility_tree' which updates visibility for entire sub-tree
         }
         return $changes;
     }
