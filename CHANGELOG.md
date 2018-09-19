@@ -2,6 +2,40 @@
 
 Changelog for the `content-tools` package.
 
+## 1.5.8
+
+- Extended BatchProcessor with match control, visit callback and read-only
+  support
+
+  The 'match' callback is called for each node and if it returns true
+  then the node is processed, if false it ignores the node. This can
+  be used for more advanced filtering.
+
+  The 'visit' callback is called before node/object is processed, can
+  be used to output progress before anything happens.
+
+  By setting processor param 'readOnly' to true it will force the
+  processor to no call the 'process' callback, 'visit' and 'visited'
+  are still called.
+- ContentObject loadLocations now stores node properties
+- Added more options to process_content
+
+  --read-only forces processing to be read-only, no process is called
+  only visit callbacks.
+
+  --nodes makes processing to occur on nodes and not objects.
+
+  --php-file specifies a PHP file which should return an array with
+  callback entries, it can return the following
+
+  - 'process' - The function to process the object, must be set.
+  - 'visit' - The function to call on each visit.
+  - 'visited' - The function to call after each visit.
+  - 'completed' - The function to call when an object was modified.
+  - 'skipped' - The function to call when an object was not modified.
+  - 'match' - The function to call for additional filtering.
+- Support for attribute filtering in process_content
+
 ## 1.5.7
 
 - Added a batch processor class for easily modifying multiple objects.
