@@ -24,10 +24,11 @@ $script = \eZScript::instance(
     )
 );
 $script->startup();
-$options = $script->getOptions("[class:][parent-node:][depth:][only-visible][nodes][read-only][php-file:]", "", array(
+$options = $script->getOptions("[class:][parent-node:][depth:][attribute:*][only-visible][nodes][read-only][php-file:]", "", array(
     "class" => "Limit processing to only these type of content-classes. Comma separated list",
     "parent-node" => "Choose starting point for processing, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id> or path:<alias-path>",
     "depth" => "Choose how deep in the tree structure to process, defaults to 1 level. Use * for unlimited",
+    "attribute" => "Limit to only attributes with given value, format is <class>/<attribute>=<value>. Values is decoded from JSON",
     "only-visible" => "Only process visible nodes",
     "nodes" => "Visit all nodes, not just main-nodes",
     "read-only" => "Only list visitied nodes, do not modify",
@@ -83,6 +84,30 @@ if (Arr::get($options, 'read-only')) {
 }
 $phpFile = Arr::get($options, 'php-file');
 
+$attributes = array();
+$attributeOption = Arr::get($options, 'attribute');
+if (!$attributeOption) {
+    $attributeOption = array();
+}
+foreach ($attributeOption as $attribute) {
+    if (!preg_match("|^([a-z][a-z0-9-_]+)/([a-z][a-z0-9-_]+)=(.+)$|", $attribute, $matches)) {
+        $cli->error("Invalid format for attribute filter '$attribute'");
+        $script->shutdown(1);
+    }
+    $class = $matches[1];
+    $identifier = $matches[2];
+    if ($matches[3] === 'null') {
+        $value = null;
+    } else {
+        $value = json_decode($matches[3], true);
+        if ($value === null) {
+            $cli->error("Invalid value for attribute filter '$attribute', could not decode from JSON");
+            $script->shutdown(1);
+        }
+    }
+    $attributes["$class/$identifier"] = $value;
+}
+
 $query = new QuerySet();
 if ($classIdentifiers) {
     $allClasses = array();
@@ -105,6 +130,12 @@ if ($onlyVisible) {
 }
 if ($parentNode) {
     $query = $query->parentNode($parentNode);
+}
+if ($attributes) {
+    $query = $query->loadFilters();
+    foreach ($attributes as $filterName => $filterValue) {
+        $query = $query->filter($filterName, $filterValue);
+    }
 }
 
 $params = array(
