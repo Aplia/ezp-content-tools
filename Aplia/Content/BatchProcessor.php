@@ -9,10 +9,13 @@ class BatchProcessor
 {
     public $globalLimits = false;
     public $objectMode = true;
+    public $readOnly = false;
     public $visitedCount = 0;
     public $modifiedCount = 0;
     // Callbacks
+    public $matchCallback;
     public $processCallback;
+    public $visitCallback;
     public $completedCallback;
     public $skippedCallback;
     public $visitedCallback;
@@ -27,11 +30,14 @@ class BatchProcessor
                 $queryParams = $query;
                 $query = null;
             }
+            $this->matchCallback = Arr::get($params, 'match');
             $this->processCallback = Arr::get($params, 'process');
+            $this->visitCallback = Arr::get($params, 'visit');
             $this->completedCallback = Arr::get($params, 'completed');
             $this->skippedCallback = Arr::get($params, 'skipped');
             $this->visitedCallback = Arr::get($params, 'visited');
             $this->objectMode = Arr::get($params, 'objectMode', true);
+            $this->readOnly = Arr::get($params, 'readOnly', false);
         } else {
             $query = $params;
         }
@@ -64,22 +70,34 @@ class BatchProcessor
     {
         if ($this->objectMode) {
             foreach ($this->query as $node) {
-                if ($this->processObject($node)) {
-                    $this->modifiedCount += 1;
-                    $this->onCompleted($node);
-                } else {
-                    $this->onSkipped($node);
+                if (!$this->isMatch($node)) {
+                    continue;
+                }
+                $this->onVisit($node);
+                if (!$this->readOnly) {
+                    if ($this->processObject($node)) {
+                        $this->modifiedCount += 1;
+                        $this->onCompleted($node);
+                    } else {
+                        $this->onSkipped($node);
+                    }
                 }
                 $this->visitedCount += 1;
                 $this->onVisited($node);
             }
         } else {
             foreach ($this->query as $node) {
-                if ($this->processNode($node)) {
-                    $this->modifiedCount += 1;
-                    $this->onCompleted($node);
-                } else {
-                    $this->onSkipped($node);
+                if (!$this->isMatch($node)) {
+                    continue;
+                }
+                $this->onVisit($node);
+                if (!$this->readOnly) {
+                    if ($this->processNode($node)) {
+                        $this->modifiedCount += 1;
+                        $this->onCompleted($node);
+                    } else {
+                        $this->onSkipped($node);
+                    }
                 }
                 $this->visitedCount += 1;
                 $this->onVisited($node);
@@ -105,6 +123,21 @@ class BatchProcessor
             return call_user_func($this->processCallback, $object);
         }
         return false;
+    }
+
+    public function isMatch(eZContentObjectTreeNode $node)
+    {
+        if ($this->matchCallback) {
+            return call_user_func($this->matchCallback, $node);
+        }
+        return true;
+    }
+
+    public function onVisit(eZContentObjectTreeNode $node)
+    {
+        if ($this->visitCallback) {
+            return call_user_func($this->visitCallback, $node);
+        }
     }
 
     public function onCompleted(eZContentObjectTreeNode $node)
