@@ -9,6 +9,7 @@ class BatchProcessor
 {
     public $globalLimits = false;
     public $objectMode = true;
+    public $visitedCount = 0;
     public $modifiedCount = 0;
     // Callbacks
     public $processCallback;
@@ -69,6 +70,7 @@ class BatchProcessor
                 } else {
                     $this->onSkipped($node);
                 }
+                $this->$visitedCount += 1;
                 $this->onVisited($node);
             }
         } else {
@@ -79,6 +81,7 @@ class BatchProcessor
                 } else {
                     $this->onSkipped($node);
                 }
+                $this->$visitedCount += 1;
                 $this->onVisited($node);
             }
         }
