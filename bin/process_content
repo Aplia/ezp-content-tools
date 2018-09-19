@@ -24,17 +24,22 @@ $script = \eZScript::instance(
     )
 );
 $script->startup();
-$options = $script->getOptions("[class:][parent-node:][depth:][only-visible]", "", array(
+$options = $script->getOptions("[class:][parent-node:][depth:][only-visible][nodes][read-only][php-file:]", "", array(
     "class" => "Limit processing to only these type of content-classes. Comma separated list",
     "parent-node" => "Choose starting point for processing, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id> or path:<alias-path>",
     "depth" => "Choose how deep in the tree structure to process, defaults to 1 level. Use * for unlimited",
     "only-visible" => "Only process visible nodes",
+    "nodes" => "Visit all nodes, not just main-nodes",
+    "read-only" => "Only list visitied nodes, do not modify",
+    "php-file" => "Load processing function from PHP file, must return array with 'process' entry",
 ));
 $script->initialize();
 
 // Make sure all translations are fetched
 eZContentLanguage::setPrioritizedLanguages(eZContentLanguage::fetchLocaleList());
 
+$objectMode = true;
+$readOnly = false;
 $classIdentifiers = Arr::get($options, 'class');
 if ($classIdentifiers) {
     $classIdentifiers = explode(",", $classIdentifiers);
@@ -69,6 +74,15 @@ if (Arr::get($options, 'only-visible')) {
     $onlyVisible = true;
 }
 
+if (Arr::get($options, 'nodes')) {
+    $objectMode = false;
+}
+
+if (Arr::get($options, 'read-only')) {
+    $readOnly = true;
+}
+$phpFile = Arr::get($options, 'php-file');
+
 $query = new QuerySet();
 if ($classIdentifiers) {
     $allClasses = array();
@@ -93,12 +107,69 @@ if ($parentNode) {
     $query = $query->parentNode($parentNode);
 }
 
-$processor = new BatchProcessor(array(
+$params = array(
+    'objectMode' => $objectMode,
+    'readOnly' => $readOnly,
     'query' => $query,
-    'visited' => function ($node) {
+    'visit' => function ($node) {
         echo "'", $node->attribute('name'), "' (", $node->attribute('class_identifier'), "), node_id: ", $node->attribute('node_id'), ", url: ", $node->url(), "\n";
+    },
+);
+if (!$readOnly) {
+    $params['completed'] = function ($node) {
+        echo "- Object was modified\n";
+    };
+}
+if ($phpFile) {
+    $result = require $phpFile;
+    if (!$readOnly) {
+        if (!isset($result['process'])) {
+            $cli->error("PHP file '${phpFile}' did return a 'process' function");
+            $script->shutdown(1);
+        }
+        if (!is_callable($result['process'])) {
+            $cli->error("PHP file '${phpFile}' returned a 'process' value but it is not a function, got: " . get_type($result['process']));
+            $script->shutdown(1);
+        }
+        $params['process'] = $result['process'];
     }
-));
+    if (isset($result['visit'])) {
+        if (!is_callable($result['visit'])) {
+            $cli->error("PHP file '${phpFile}' returned a 'visit' value but it is not a function, got: " . get_type($result['visit']));
+            $script->shutdown(1);
+        }
+        $params['visit'] = $result['visit'];
+    }
+    if (isset($result['visited'])) {
+        if (!is_callable($result['visited'])) {
+            $cli->error("PHP file '${phpFile}' returned a 'visited' value but it is not a function, got: " . get_type($result['visited']));
+            $script->shutdown(1);
+        }
+        $params['visited'] = $result['visited'];
+    }
+    if (isset($result['completed'])) {
+        if (!is_callable($result['completed'])) {
+            $cli->error("PHP file '${phpFile}' returned a 'completed' value but it is not a function, got: " . get_type($result['completed']));
+            $script->shutdown(1);
+        }
+        $params['completed'] = $result['completed'];
+    }
+    if (isset($result['skipped'])) {
+        if (!is_callable($result['skipped'])) {
+            $cli->error("PHP file '${phpFile}' returned a 'skipped' value but it is not a function, got: " . get_type($result['skipped']));
+            $script->shutdown(1);
+        }
+        $params['skipped'] = $result['skipped'];
+    }
+    if (isset($result['match'])) {
+        if (!is_callable($result['match'])) {
+            $cli->error("PHP file '${phpFile}' returned a 'match' value but it is not a function, got: " . get_type($result['match']));
+            $script->shutdown(1);
+        }
+        $params['match'] = $result['match'];
+    }
+}
+$processor = new BatchProcessor($params);
 $processor->process();
 if ($processor->visitedCount) {
     echo "Matched " . $processor->visitedCount . " objects\n";
