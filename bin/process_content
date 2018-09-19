@@ -100,5 +100,10 @@ $processor = new BatchProcessor(array(
     }
 ));
 $processor->process();
+if ($processor->visitedCount) {
+    echo "Matched " . $processor->visitedCount . " objects\n";
+} else {
+    echo "No objects matched filter\n";
+}
 
 $script->shutdown();
