@@ -240,6 +240,8 @@ class ContentType
     /**
      * Make a sort-by string out of the sort field and sort order integers
      * stored on the content class.
+     * 
+     * @return string
      */
     public static function encodeSortBy($field, $order)
     {
@@ -271,6 +273,43 @@ class ContentType
             throw new ValueError("Unknown sort field $sortBy");
         }
         return array($sortId, $order);
+    }
+
+    /**
+     * Makes a visibility string out of is_hidden and is_invisibile
+     * properties on a node.
+     * 
+     * @return string
+     */
+    public static function encodeVisibility($isHidden, $isInvisible)
+    {
+        if ($isHidden) {
+            // Explicitly hidden on node
+            return 'hidden';
+        } else if ($isInvisible) {
+            // Implicitly hidden by parent nodes
+            return 'invisible';
+        }
+        return 'visible';
+    }
+
+    /**
+     * Decode a visibility string into the is_hidden and is_invisibile values.
+     * Returns an array with the two values in order.
+     * 
+     * @return array
+     */
+    public static function decodeVisibility($visibility)
+    {
+        if ($visibility === 'visible') {
+            return array(false, false);
+        } else if ($visibility === 'hidden') {
+            return array(true, true);
+        } else if ($visibility === 'invisible') {
+            return array(false, true);
+        } else {
+            throw new ValueError("Unknown visibility type '$visibility'");
+        }
     }
 
     /**

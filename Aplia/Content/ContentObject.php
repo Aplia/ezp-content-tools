@@ -1175,7 +1175,11 @@ class ContentObject
             $this->_locations[] = array(
                 'parent_id' => $node->attribute('parent_node_id'),
                 'node' => $node,
+                'uuid' => $node->attribute('remote_id'),
                 'is_main' => $node->isMain(),
+                'priority' => $node->attribute('priority'),
+                'sort_by' => ContentType::encodeSortBy($node->attribute('sort_field'), $node->attribute('sort_order')),
+                'visibility' => ContentType::encodeVisibility($node->attribute('is_hidden'), $node->attribute('is_invisibile')),
                 'status' => 'nop',
             );
         }
