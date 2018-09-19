@@ -35,11 +35,11 @@ $script->initialize();
 // Make sure all translations are fetched
 eZContentLanguage::setPrioritizedLanguages(eZContentLanguage::fetchLocaleList());
 
-$classNames = Arr::get($options, 'class');
-if ($classNames) {
-    $classNames = explode(",", $classNames);
+$classIdentifiers = Arr::get($options, 'class');
+if ($classIdentifiers) {
+    $classIdentifiers = explode(",", $classIdentifiers);
 } else {
-    $classNames = null;
+    $classIdentifiers = null;
 }
 
 $parentNode = null;
@@ -70,8 +70,18 @@ if (Arr::get($options, 'only-visible')) {
 }
 
 $query = new QuerySet();
-if ($classNames) {
-    $query = $query->classes($classNames);
+if ($classIdentifiers) {
+    $allClasses = array();
+    foreach (eZContentClass::fetchAllClasses() as $contentClass) {
+        $allClasses[$contentClass->attribute('identifier')] = $contentClass;
+    }
+    foreach ($classIdentifiers as $classIdentifier) {
+        if (!isset($allClasses[$classIdentifier])) {
+            $cli->error("Content-class with identifier '$classIdentifier' does not exist");
+            $script->shutdown(1);
+        }
+    }
+    $query = $query->classes($classIdentifiers);
 }
 if ($depth !== null) {
     $query = $query->depth($depth);
