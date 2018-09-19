@@ -70,7 +70,7 @@ class BatchProcessor
                 } else {
                     $this->onSkipped($node);
                 }
-                $this->$visitedCount += 1;
+                $this->visitedCount += 1;
                 $this->onVisited($node);
             }
         } else {
@@ -81,7 +81,7 @@ class BatchProcessor
                 } else {
                     $this->onSkipped($node);
                 }
-                $this->$visitedCount += 1;
+                $this->visitedCount += 1;
                 $this->onVisited($node);
             }
         }
