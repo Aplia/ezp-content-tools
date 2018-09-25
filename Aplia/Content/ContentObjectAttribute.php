@@ -638,6 +638,51 @@ class ContentObjectAttribute
             } else {
                 throw new TypeError("Value for ${type} must be array with 'amount', 'is_vat_included' and 'vat', cannot import value: " . var_export($value, true));
             }
+        // } else if ($type === 'eztags') {
+        //     if (!$value) {
+        //         $value = '';
+        //         $asString = true;
+        //     } else if (is_array($value)) {
+        //         $idList = array();
+        //         $keywordList = array();
+        //         $parentList = array();
+        //         $localeList = array();
+        //         foreach ($value as $tag) {
+        //             if (isset($tag['keyword'])) {
+        //                 $keyword = $tag['keyword'];
+        //                 $tagUuid = Arr::get($tag, 'uuid');
+        //                 if ($tagUuid) {
+        //                     $tagObject = \eZTagsObject::fetchByRemoteID($tagUuid);
+        //                 } else {
+        //                     $tagObject = \eZTagsObject::fetchByKeyword($keyword);
+        //                 }
+        //                 if ($tagObject) {
+        //                     $idList[] = $tagObject->attribute('id');
+        //                     $keywordList[] = $tagObject->attribute('keyword');
+        //                     $parentList[] = $tagObject->attribute('parent_id');
+        //                     $localeList[] = $tagObject->getCurrentLanguage();
+        //                 } else {
+        //                     $parentId = null;
+        //                     if (isset($tag['parent_uuid'])) {
+        //                         $parent = \eZTagsObject::fetchByRemoteID($tagUuid);
+        //                         if ($parent) {
+        //                             $parentId = $parent->attribute('id');
+        //                         }
+        //                     }
+        //                     $tagObject = new \eZTagsObject(array(
+        //                         'parent_id' => $parentId,
+        //                         'keyword' => $tag['keyword']
+        //                     ));
+        //                     $idList[] = $tagObject->attribute('id');
+        //                     $keywordList[] = $tagObject->attribute('keyword');
+        //                     $parentList[] = $tagObject->attribute('parent_id');
+        //                     $localeList[] = $tagObject->getCurrentLanguage();
+        //                 }
+        //             }
+        //         }
+        //     } else {
+        //         throw new TypeError("Value for ${type} must be array of array elements with 'keyword' and 'uuid', cannot import value: " . var_export($value, true));
+        //     }
         } else {
             // Detect input handler for content
             $contentInputHandler = $this->contentInputHandler;
