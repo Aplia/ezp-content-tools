@@ -3198,7 +3198,7 @@ class ContentImporter
     public function info($text)
     {
         if ($this->cli) {
-            $this->cli->info($text);
+            $this->cli->output($text);
         } else if ($this->verbose) {
             echo "${text}\n";
         }
