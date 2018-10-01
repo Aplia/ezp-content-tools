@@ -10,6 +10,7 @@ use Aplia\Content\Exceptions\TypeError;
 use Aplia\Content\Exceptions\ValueError;
 use eZContentObject;
 use eZContentObjectTreeNode;
+use Aplia\Content\Exceptions\ObjectDoesNotExist;
 
 class ContentImporter
 {
@@ -81,6 +82,64 @@ class ContentImporter
     // Contains a list of files which are created during import and should
     // be removed after import is completed.
     public $tempFiles = array();
+
+    /**
+     * Maps uuid of owner object to a list of object uuids the object owns. The list
+     * uses the object uuid as the key and not the value, the value does not matter.
+     * Using a key avoids duplicates and has quicker check for existence.
+     * 
+     * e.g. if admin user (id=14) owns two objects, the objects would have the structures:
+     * @code
+     * array(
+     *   'uuid' => 'cafebabe',
+     *   'owner' => array(
+     *     'uuid' => 'abcdef123456',
+     *     'object_id' => 14,
+     *   )
+     * )
+     * array(
+     *   'uuid' => '0987654321abc',
+     *   'owner' => array(
+     *     'uuid' => 'abcdef123456',
+     *     'object_id' => 14,
+     *   )
+     * )
+     * @endcode
+     * 
+     * From this $mapOwnerToObjects would then contain:
+     * @code
+     * array('abcdef123456' => array('cafebabe' => null, '0987654321abc' => null));
+     * @endcode
+     */
+    public $mapOwnerToObjects = array();
+    /**
+     * Reverse relation between objects. Maps uuid of object being pointed to, to a list of
+     * object uuids that point to the relation. The list uses the object uuid as the key
+     * and not the value, the value does not matter.
+     * Using a key avoids duplicates and has quicker check for existence.
+     * 
+     * e.g. say object1 is related to object2, the objects would have the structures:
+     * @code
+     * array(
+     *   'uuid' => 'cafebabe',
+     *   'related' => array(
+     *     array(
+     *       'uuid' => '0987654321abc',
+     *       'object_id' => 14,
+     *     )
+     *   )
+     * )
+     * array(
+     *   'uuid' => '0987654321abc',
+     * )
+     * @endcode
+     * 
+     * From this $mapReverseRelationToObject would then contain:
+     * @code
+     * array('0987654321abc' => array('0987654321abc' => null));
+     * @endcode
+     */
+    public $mapReverseRelationToObject = array();
 
     // Used to resolve relative file imports
     protected $importPath = null;
@@ -1421,6 +1480,29 @@ class ContentImporter
                 $objectEntry['owner'] = array();
             }
             $objectEntry['owner']['original_uuid'] = $preOwner['original_uuid'];
+            if (isset($objectEntry['owner']['uuid'])) {
+                $ownerUuid = $objectEntry['owner']['uuid'];
+                if (!isset($this->mapOwnerToObjects[$ownerUuid])) {
+                    $this->mapOwnerToObjects[$ownerUuid] = array();
+                }
+                $this->mapOwnerToObjects[$ownerUuid][$uuid] = null;
+            }
+            $classData = $this->classIndex[$classIdentifier];
+            if ($objectEntry['translations']) {
+                foreach ($objectEntry['translations'] as $language => $languageData) {
+                    if (!isset($languageData[$language])) {
+                        continue;
+                    }
+                    foreach ($languageData[$language]['attributes'] as $attributeIdentifier => $attributeValue) {
+                        $this->importContentObjectAttribute($objectEntry, $classData, $language, $attributeIdentifier, $attributeValue);
+                    }
+                }
+            }
+            if ($objectEntry['attributes']) {
+                foreach ($objectEntry['attributes'] as $attributeIdentifier => $attributeValue) {
+                    $this->importContentObjectAttribute($objectEntry, $classData, $language, $attributeIdentifier, $attributeValue);
+                }
+            }
         }
 
         // Include relations
@@ -1435,13 +1517,19 @@ class ContentImporter
                 if (isset($objectEntry['relations'][$relatedUuid])) {
                     continue;
                 }
-                $objectEntry['relations'][$relatedUuid] = array(
+                $relatedEntry = array(
                     'uuid' => Arr::get($related, 'uuid'),
                     'name' => Arr::get($related, 'name'),
                     'class_identifier' => Arr::get($related, 'class_identifier'),
                     'original_uuid' => $preRelations[$idx]['original_uuid'],
                     'status' => 'new',
                 );
+                $objectEntry['relations'][$relatedUuid] = $relatedEntry;
+                // Store reverse-relation for later lookups
+                if (!isset($this->mapReverseRelationToObject[$relatedEntry['uuid']])) {
+                    $this->mapReverseRelationToObject[$relatedEntry['uuid']] = array();
+                }
+                $this->mapReverseRelationToObject[$relatedEntry['uuid']][$uuid] = null;
             }
         }
         $this->objectIndex[$uuid] = $objectEntry;
@@ -1571,14 +1659,15 @@ class ContentImporter
         if (!$isInIndex) {
             // If the object uuid was remapped then store the remap so that any
             // future references to the original uuid gets the new uuid
-            $originalUuid = Arr::get($objectData, 'original_uuid');
-            if ($uuid != $originalUuid) {
+            $objectEntry = $this->objectIndex[$uuid];
+            $originalUuid = Arr::get($objectEntry, 'original_uuid');
+            if ($originalUuid && $uuid != $originalUuid) {
                 $existingObject = eZContentObject::fetchByRemoteID($uuid);
                 $remapData = array(
                     'uuid' => $uuid,
-                    'name' => Arr::get($objectData, 'name'),
-                    'class_identifier' => Arr::get($objectData, 'class_identifier'),
-                    'section_identifier' => Arr::get($objectData, 'section_identifier'),
+                    'name' => Arr::get($objectEntry, 'name'),
+                    'class_identifier' => Arr::get($objectEntry, 'class_identifier'),
+                    'section_identifier' => Arr::get($objectEntry, 'section_identifier'),
                 );
                 if ($existingObject) {
                     $remapData = array_merge($remapData, array(
@@ -1588,6 +1677,220 @@ class ContentImporter
                     ));
                 }
                 $this->mapObject[$originalUuid] = $remapData;
+
+                $this->remapExistingObjects($uuid, $originalUuid);
+            }
+        }
+
+    }
+
+    /**
+     * Called on each attribute on imported objects, may updated extra indexs such as relations.
+     *
+     * @param array $objectEntry
+     * @param array $class
+     * @param string $language
+     * @param string $attributeIdentifier
+     * @param mixed $attributeValue
+     * @return void
+     */
+    public function importContentObjectAttribute($objectEntry, $class, $language, $attributeIdentifier, $attributeValue)
+    {
+        if (!isset($class['attributes'][$attributeIdentifier])) {
+            throw new ObjectDoesNotExist("Content attribute '$attributeIdentifier' does not exist, cannot import object attribute");
+        }
+        $dataType = $class['attributes'][$attributeIdentifier]['type'];
+        $objectUuid = $objectEntry['uuid'];
+        if ($dataType === 'ezobjectrelation') {
+            if (!$attributeValue || !is_array($attributeValue)) {
+                return;
+            }
+            $relatedUuid = $attributeValue['object_uuid'];
+            if (!isset($this->mapReverseRelationToObject[$relatedUuid])) {
+                $this->mapReverseRelationToObject[$relatedUuid] = array();
+            }
+            $this->mapReverseRelationToObject[$relatedUuid][$objectUuid] = null;
+        } else if ($dataType === 'ezobjectrelationlist') {
+            if (!$attributeValue || !isset($attributeValue['relations']) || !is_array($attributeValue['relations'])) {
+                return;
+            }
+            foreach ($attributeValue['relations'] as $relationData) {
+                $relatedUuid = $relationData['object_uuid'];
+                if (!isset($this->mapReverseRelationToObject[$relatedUuid])) {
+                    $this->mapReverseRelationToObject[$relatedUuid] = array();
+                }
+                $this->mapReverseRelationToObject[$relatedUuid][$objectUuid] = null;
+            }
+        } else if ($dataType === 'ezxmltext') {
+            if (!isset($attributeValue['xml'])) {
+                return;
+            }
+            $dom = new \DOMDocument('1.0', 'utf-8');
+            if (!@$dom->loadXML($attributeValue)) {
+                return;
+            }
+            $xpath = new \DOMXPath($dom);
+            $embedObjects = array();
+            $embeds = $xpath->query('//embed');
+            // Find all embedded objects and record the original uuid as a relation, this will later on be used
+            // to find the new uuid if it has changed
+            foreach ($embeds as $embed) {
+                $embedUuid = $embed->getAttribute('uuid');
+                if (!$objectUuid) {
+                    continue;
+                }
+                if (!isset($this->mapReverseRelationToObject[$embedUuid])) {
+                    $this->mapReverseRelationToObject[$embedUuid] = array();
+                }
+                $this->mapReverseRelationToObject[$embedUuid][$objectUuid] = null;
+            }
+        }
+    }
+
+    /**
+     * Goes over all objects and finds references to $originalUuid and remaps it to $newUuid.
+     * It checks ownership, relations and attributes.
+     */
+    public function remapExistingObjects($newUuid, $originalUuid)
+    {
+        // If the object is used as owner of other objects update the owner references
+        if (isset($this->mapOwnerToObjects[$originalUuid])) {
+            if (!isset($this->mapOwnerToObjects[$newUuid])) {
+                $this->mapOwnerToObjects[$newUuid] = array();
+            }
+            foreach ($this->mapOwnerToObjects[$originalUuid] as $objectUuid => $ignore) {
+                // Move owner objects to new uuid
+                $this->mapOwnerToObjects[$newUuid][$objectUuid] = null;
+                $objectData = $this->objectIndex[$objectUuid];
+                // Since the object is in $mapOwnerToObjects then it is assumed to have an 'owner' entry
+                $objectData['owner']['uuid'] = $newUuid;
+                if (!isset($objectData['owner']['original_object_id'])) {
+                    $objectData['owner']['original_object_id'] = $objectData['owner']['object_id'];
+                }
+                $objectData['owner']['object_id'] = $newUuid;
+                $this->objectIndex[$objectUuid] = $objectData;
+            }
+            unset($this->mapOwnerToObjects[$originalUuid]);
+        }
+
+        // If there are other objects with relations to this object then update the reference
+        if (isset($this->mapReverseRelationToObject[$originalUuid])) {
+            if (!isset($this->mapReverseRelationToObject[$newUuid])) {
+                $this->mapReverseRelationToObject[$newUuid] = array();
+            }
+            foreach ($this->mapReverseRelationToObject[$originalUuid] as $objectUuid => $ignore) {
+                // Move relation to new uuid
+                $this->mapReverseRelationToObject[$newUuid][$objectUuid] = null;
+                $objectData = $this->objectIndex[$objectUuid];
+                $classData = $this->classIndex[$objectData['class_identifier']];
+                // Since the object is in mapReverseRelationToObject then it is assumed to have a 'related' entry
+                foreach($objectData['relations'] as $idx => $relation) {
+                    // Remap if it matches
+                    if ($relation['uuid'] !== $originalUuid) {
+                        continue;
+                    }
+                    $relation['uuid'] = $newUuid;
+                    $objectData['relations'][$idx] = $relation;
+                }
+
+                if ($objectData['translations']) {
+                    foreach ($objectData['translations'] as $language => $languageData) {
+                        if (!isset($languageData['attributes'])) {
+                            continue;
+                        }
+                        foreach ($languageData['attributes'] as $attributeIdentifier => $attributeValue) {
+                            $newValue = $this->remapAttributeObjects($newUuid, $originalUuid, $objectData, $classData, $language, $attributeIdentifier, $attributeValue);
+                            if ($newValue !== null) {
+                                $languageData['attributes'][$attributeIdentifier] = $newValue;
+                            }
+                        }
+                        $objectData['translations'][$language] = $languageData;
+                    }
+                }
+                if ($objectData['attributes']) {
+                    foreach ($objectData['attributes'] as $attributeIdentifier => $attributeValue) {
+                        $newValue = $this->remapAttributeObjects($newUuid, $originalUuid, $objectData, $classData, $language, $attributeIdentifier, $attributeValue);
+                        if ($newValue !== null) {
+                            $objectData['attributes'][$attributeIdentifier] = $newValue;
+                        }
+                    }
+                }
+                $this->objectIndex[$objectUuid] = $objectData;
+            }
+            unset($this->mapReverseRelationToObject[$originalUuid]);
+        }
+    }
+
+    /**
+     * Called on each attribute on imported objects, may updated extra indexs such as relations.
+     *
+     * @param array $objectEntry
+     * @param array $class
+     * @param string $language
+     * @param string $attributeIdentifier
+     * @param mixed $attributeValue
+     * @return void
+     */
+    public function remapAttributeObjects($newUuid, $originalUuid, $objectEntry, $class, $language, $attributeIdentifier, $attributeValue)
+    {
+        $dataType = $class['attributes'][$attributeIdentifier]['type'];
+        $objectUuid = $objectEntry['uuid'];
+        if ($dataType === 'ezobjectrelation') {
+            if (!$attributeValue || !is_array($attributeValue)) {
+                return;
+            }
+            $relatedUuid = $attributeValue['object_uuid'];
+            // Check if it is the same object
+            if ($relatedUuid !== $originalUuid) {
+                return;
+            }
+            $attributeValue['object_uuid'] = $newUuid;
+            unset($attributeValue['object_id']);
+            unset($attributeValue['name']);
+            return $attributeValue;
+        } else if ($dataType === 'ezobjectrelationlist') {
+            if (!$attributeValue || !isset($attributeValue['relations']) || !is_array($attributeValue['relations'])) {
+                return;
+            }
+            $isModified = false;
+            foreach ($attributeValue['relations'] as $idx => $relationData) {
+                $relatedUuid = $relationData['object_uuid'];
+                if ($relatedUuid !== $originalUuid) {
+                    continue;
+                }
+                $relationData['object_uuid'] = $newUuid;
+                unset($relationData['object_id']);
+                unset($relationData['name']);
+                $attributeValue['relations'][$idx] = $relationData;
+                $isModified = true;
+            }
+            if ($isModified) {
+                return $attributeValue;
+            }
+        } else if ($dataType === 'ezxmltext') {
+            if (!isset($attributeValue['xml'])) {
+                return;
+            }
+            $dom = new \DOMDocument('1.0', 'utf-8');
+            if (!@$dom->loadXML($attributeValue['xml'])) {
+                return null;
+            }
+            $xpath = new \DOMXPath($dom);
+            $isModified = false;
+            $embeds = $xpath->query('//embed');
+            // Find embedded objects which has the original uuid and change it to point to the new uuid
+            foreach ($embeds as $embed) {
+                $embedUuid = $embed->getAttribute('uuid');
+                if ($embedUuid !== $originalUuid) {
+                    continue;
+                }
+                $embed->setAttribute('uuid', $newUuid);
+                $isModified = true;
+            }
+            if ($isModified) {
+                $xml = $dom->saveXML();
+                $attributeValue['xml'] = $xml;
+                return $attributeValue;
             }
         }
     }
