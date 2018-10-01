@@ -5,6 +5,7 @@ use eZContentObjectTreeNode;
 use eZContentObject;
 use eZContentLanguage;
 use eZSection;
+use eZUser;
 
 class ContentExporter
 {
