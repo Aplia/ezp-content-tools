@@ -3151,11 +3151,34 @@ class ContentImporter
         }
     }
 
+    /**
+     * Output a warning string to the console.
+     * Either sends the string to $this->cli->warning() or outputs directly to stderr if verbose is on.
+     *
+     * @param string $text
+     * @return void
+     */
     public function warning($text)
     {
         if ($this->cli) {
             $this->cli->warning($text);
         } else {
+            fwrite(STDERR, "${text}\n");
+        }
+    }
+
+    /**
+     * Output the text string to the console.
+     * Either sends the string to $this->cli->info() or outputs directly if verbose is on.
+     *
+     * @param string $text
+     * @return void
+     */
+    public function info($text)
+    {
+        if ($this->cli) {
+            $this->cli->info($text);
+        } else if ($this->verbose) {
             echo "${text}\n";
         }
     }

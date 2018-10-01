@@ -2,6 +2,12 @@
 
 Changelog for the `content-tools` package.
 
+## 1.6.0
+
+- ContentImporter::warning() now outputs to stderr not stdout.
+- Added ContentImporter::info() to output to stdout console, only outputs
+  if verbosity is on.
+
 ## 1.5.8
 
 - Extended BatchProcessor with match control, visit callback and read-only
