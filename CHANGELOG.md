@@ -9,6 +9,9 @@ Changelog for the `content-tools` package.
   if verbosity is on.
 - Added method ContentObjet::lookupContentObject for finding an object
   by UUID/Remote ID, uses a LRU cache to avoid repeated access to DB.
+- Support for late mapping of content objects on import. Any new objects
+  will now scan for relations to this object and fix the UUID reference
+  if it was changed by mapping/transformation.
 
 ## 1.5.8
 
