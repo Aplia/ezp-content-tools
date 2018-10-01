@@ -7,6 +7,8 @@ Changelog for the `content-tools` package.
 - ContentImporter::warning() now outputs to stderr not stdout.
 - Added ContentImporter::info() to output to stdout console, only outputs
   if verbosity is on.
+- Added method ContentObjet::lookupContentObject for finding an object
+  by UUID/Remote ID, uses a LRU cache to avoid repeated access to DB.
 
 ## 1.5.8
 

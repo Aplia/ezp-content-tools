@@ -1,6 +1,7 @@
 <?php
 namespace Aplia\Content;
 use DateTime;
+use cash\LRUCache;
 use Aplia\Support\Arr;
 use Aplia\Content\BinaryFile;
 use Aplia\Content\ImageFile;
@@ -169,6 +170,7 @@ class ContentImporter
         if (!$this->startNode) {
             throw new UnsetValueError("ContentImporter requires startNode/start_node set");
         }
+        $this->contentObjectCache = new LRUCache(400);
         $this->addExistingNode($this->startNode, /*nodeUuid*/null, /*children*/null, true);
         $this->rootNode = eZContentObjectTreeNode::fetch(1);
         $this->addExistingNode($this->rootNode, /*nodeUuid*/null, /*children*/null, true);
@@ -3149,6 +3151,25 @@ class ContentImporter
         foreach ($nodeData['children'] as $childUuid) {
             $this->printNode($this->nodeIndex[$childUuid], $level + 1);
         }
+    }
+
+    /**
+     * Looks up a content object using a UUID and returns it.
+     * The lookup is cached for frequently used objects.
+     *
+     * @param string $uuid
+     * @return \eZContentObject
+     */
+    public function lookupContentObject($uuid)
+    {
+        $object = $this->contentObjectCache->get($uuid);
+        if (!$object) {
+            $object = eZContentObject::fetchByRemoteID($uuid);
+            if ($object) {
+                $this->contentObjectCache->put($uuid, $object);
+            }
+        }
+        return $object;
     }
 
     /**

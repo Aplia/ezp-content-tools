@@ -18,7 +18,8 @@
     "require": {
         "php": ">=5.3",
         "composer/composer": ">=1.0",
-        "aplia/support": "^1.0"
+        "aplia/support": "^1.0",
+        "cash/lrucache": "1.0.0"
     },
     "bin": [
         "bin/dump_contentclass",
