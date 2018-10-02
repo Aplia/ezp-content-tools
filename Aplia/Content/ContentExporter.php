@@ -55,7 +55,21 @@ class ContentExporter
         }
     }
 
-    function exportNode(eZContentObjectTreeNode $node)
+    /**
+     * Exports a relation to a content object. It contains the 'uuid' of the object
+     * for reference, additionally it exports the object ID as 'object_id',
+     * name as 'name', class identifier as 'class_identifier'. If the object is
+     * a user it also exports the email and login as 'email and 'username'.
+     *
+     * @param \eZContentObject $object
+     * @return array
+     */
+    public function exportRelation($object)
+    {
+        return ContentObject::makeRelation($object);
+    }
+
+    public function exportNode(eZContentObjectTreeNode $node)
     {
         $parent = $node->fetchParent();
         $path = $node->pathArray();
@@ -93,7 +107,7 @@ class ContentExporter
         return $data;
     }
 
-    function exportContentObject(eZContentObject $contentObject)
+    public function exportContentObject(eZContentObject $contentObject)
     {
         $contentClass = $contentObject->contentClass();
         $modifiedDate = new DateTime("@" . $contentObject->attribute('modified'));
@@ -144,12 +158,7 @@ class ContentExporter
         // Add related objects, referenced by UUID, includes ID, name and class identifier to make
         // it easier for human inspection
         foreach ($contentObject->relatedContentObjectList() as $relatedObject) {
-            $data['related'][] = array(
-                'object_id' => (int)$relatedObject->attribute('id'),
-                'uuid' => $relatedObject->remoteId(),
-                'name' => $relatedObject->name(),
-                'class_identifier' => $relatedObject->contentClassIdentifier(),
-            );
+            $data['related'][] = $this->exportRelation($relatedObject);
         }
         if (!$data['related']) {
             unset($data['related']);
@@ -158,18 +167,7 @@ class ContentExporter
         // Add ownership, referenced by ID and UUID
         $owner = $contentObject->owner();
         if ($owner) {
-            $data['owner'] = array(
-                'object_id' => (int)$owner->attribute('id'),
-                'uuid' => $owner->remoteId(),
-                'name' => $owner->name(),
-            );
-            // The owner should be an object with an ezuser entry, if so record email and username
-            // This makes it easier to lookup ownership if the uuid don't match between two sites
-            $ownerUser = eZUser::fetch($owner->attribute('id'));
-            if ($ownerUser) {
-                $data['owner']['email'] = $ownerUser->attribute('email');
-                $data['owner']['username'] = $ownerUser->attribute('login');
-            }
+            $data['owner'] = $this->exportRelation($owner);
         }
 
         // Add translations for name and attributes

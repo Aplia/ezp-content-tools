@@ -2080,6 +2080,34 @@ class ContentObject
     }
 
     /**
+     * Make a relation structure for a content object. It contains the 'uuid' of the object
+     * for reference, additionally it exports the object ID as 'object_id',
+     * name as 'name', class identifier as 'class_identifier'. If the object is
+     * a user it also exports the email and login as 'email and 'username'.
+     *
+     * @param \eZContentObject $object
+     * @return array
+     */
+    public static function makeRelation($object)
+    {
+        $data = array(
+            'object_id' => (int)$object->attribute('id'),
+            'uuid' => $object->remoteId(),
+            'name' => $object->name(),
+            'class_identifier' => $object->contentClassIdentifier(),
+            'status' => self::statusToIdentifier($object->attribute('status')),
+        );
+        // The object may have an ezuser entry, if so record email and username
+        // This makes it easier to lookup relationship if the uuid don't match between two sites
+        $user = eZUser::fetch($object->attribute('id'));
+        if ($user) {
+            $data['email'] = $user->attribute('email');
+            $data['username'] = $user->attribute('login');
+        }
+        return $data;
+    }
+
+    /**
      * Writes text to the debug writer or stderr.
      * A newline is appended to the text.
      */
