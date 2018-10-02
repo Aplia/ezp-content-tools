@@ -1492,10 +1492,10 @@ class ContentImporter
             $classData = $this->classIndex[$classIdentifier];
             if ($objectEntry['translations']) {
                 foreach ($objectEntry['translations'] as $language => $languageData) {
-                    if (!isset($languageData[$language])) {
+                    if (!isset($languageData['attributes'])) {
                         continue;
                     }
-                    foreach ($languageData[$language]['attributes'] as $attributeIdentifier => $attributeValue) {
+                    foreach ($languageData['attributes'] as $attributeIdentifier => $attributeValue) {
                         $this->importContentObjectAttribute($objectEntry, $classData, $language, $attributeIdentifier, $attributeValue);
                     }
                 }
