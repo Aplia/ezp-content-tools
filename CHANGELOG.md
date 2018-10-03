@@ -2,6 +2,10 @@
 
 Changelog for the `content-tools` package.
 
+## 1.7.0
+
+- New API Aplia\Content\Role for working with eZRole, policies and assignments.
+
 ## 1.6.0
 
 - ContentImporter::warning() now outputs to stderr not stdout.
