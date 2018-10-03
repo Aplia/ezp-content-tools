@@ -24,6 +24,7 @@ use eZContentCache;
 use eZContentCacheManager;
 use eZContentObjectState;
 use eZContentObjectStateGroup;
+use eZUser;
 
 /**
  * Manager for eZContentObject instances, makes it easy to create new objects
