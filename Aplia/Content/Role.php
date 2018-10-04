@@ -12,6 +12,7 @@ use eZContentObjectTreeNode;
 use eZSection;
 use eZUser;
 use eZINI;
+use eZSiteAccess;
 use Aplia\Support\Arr;
 use Aplia\Content\Exceptions\TypeError;
 use Aplia\Content\Exceptions\ObjectDoesNotExist;
@@ -41,7 +42,7 @@ use Aplia\Content\Exceptions\ValueError;
  * $role = new Role(array('name' => 'Anonymous'));
  * $role->addPolicy('user/login');
  * $role->addPolicy('content/read', array(
- *   'class' => array('folder'),
+ *   'Class' => array('folder'),
  * ));
  * $role->create();
  * 
@@ -99,7 +100,12 @@ class Role
      * @var \cash\LRUCache
      */
     protected static $sectionCache = null;
-    protected $isPoliciesLoaded;
+    protected $isPoliciesLoaded = false;
+    protected $isAssignmentsLoaded = false;
+    protected $singleValueLimitation;
+
+    // Used for dynamic properties
+    protected $_siteAccessMap = 'unset';
 
     /**
      * Construct role object with optional parameters.
@@ -108,6 +114,9 @@ class Role
      */
     public function __construct(array $params = null)
     {
+        $this->singleValueLimitation = array(
+            'Owner' => true,
+        );
         if ($params) {
             $this->set($params);
         }
@@ -205,17 +214,23 @@ class Role
      * the limitation value.
      * 
      * The following limitation types are supported:
-     * - class - Value is an array of class identifiers or class objects
-     * - section - Value is an array of section identifiers or section objects
-     * - subtree - Value is an array of node IDs, node UUIDs, tree identifiers,
+     * - Class - Value is an array of class identifiers or class objects
+     * - ParentClass - Same as Class
+     * - Section - Value is an array of section identifiers or section objects
+     * - UserSection - Same as section
+     * - Subtree - Value is an array of node IDs, node UUIDs, tree identifiers,
      *             eZContentObjectTreeNode objects or eZContentObject objects.
+     * - UseSubtree - Same as Subtree
+     * - Node - Same as Subtree
+     * - Owner - 'self' to limit to self owned objects, 'anon' for anonymous access.
+     * - ParentDepth - Number for depth
      * 
      * @code
      * $role->addPolicy('*');
      * $role->addPolicy('content');
      * $role->addPolicy('content/read', array(
-     *   'class' => array('folder'),
-     *   'subtree' => array(2, 'tree:users', 'ab2134cd'),
+     *   'Class' => array('folder'),
+     *   'Subtree' => array(2, 'tree:users', 'ab2134cd'),
      * ));
      * @endcode
      *
@@ -235,6 +250,26 @@ class Role
     }
 
     /**
+     * Adds new or existing policies from the role object $role.
+     *
+     * @param Role $role
+     * @return self
+     */
+    public function addPolicyFromRole(Role $role)
+    {
+        foreach ($role->policies as $policy) {
+            // Only new and nop entries are transferred
+            if (!in_array($policy['status'], array('nop', 'new'))) {
+                continue;
+            }
+            $policy['status'] = 'new';
+            $this->policies[] = $policy;
+        }
+
+        return $this;
+    }
+
+    /**
      * Schedules removal of an existing policy from the role.
      * The policy is specified with access to a module and a function, as well
      * as values for the module. The module may be specified in different forms:
@@ -248,10 +283,16 @@ class Role
      * the limitation value.
      * 
      * The following limitation types are supported:
-     * - class - Value is an array of class identifiers or class objects
-     * - section - Value is an array of section identifiers or section objects
-     * - subtree - Value is an array of node IDs, node UUIDs, tree identifiers,
+     * - Class - Value is an array of class identifiers or class objects
+     * - ParentClass - Same as Class
+     * - Section - Value is an array of section identifiers or section objects
+     * - UserSection - Same as section
+     * - Subtree - Value is an array of node IDs, node UUIDs, tree identifiers,
      *             eZContentObjectTreeNode objects or eZContentObject objects.
+     * - UseSubtree - Same as Subtree
+     * - Node - Same as Subtree
+     * - Owner - 'self' to limit to self owned objects, 'anon' for anonymous access.
+     * - ParentDepth - Number for depth
      * 
      * @code
      * $role->removePolicy('*');
@@ -289,7 +330,7 @@ class Role
      * - anon - The anonymous user (defined in site.ini UserSettings/AnonymousUserId)
      * - admin - The administrator user (defined in site.ini UserSettings/AdminUserId)
      * 
-     * If $limitId is 'subtree' the value can be specified in different ways to
+     * If $limitId is 'Subtree' the value can be specified in different ways to
      * specify the subtree node.
      * A numerical ID, a string with a UUID, tree identifier 'tree:<identifier>,
      * or an object of the following classes: eZContentObject, eZContentObjectTreeNode.
@@ -299,9 +340,9 @@ class Role
      * // With object UUID
      * $role->addAssignment("abcdef")
      * // With limitation, using tree identifier
-     * $role->addAssignment($user, "subtree", "tree:media")
+     * $role->addAssignment($user, "Subtree", "tree:media")
      * // With limitation, using uuid
-     * $role->addAssignment($user, "subtree", "b2345c")
+     * $role->addAssignment($user, "Subtree", "b2345c")
      *
      * @param mixed $user User object, ID or UUID to assign to
      * @param string|null $limitId Identifier of limitation for assignment
@@ -380,7 +421,7 @@ class Role
         $userId = $this->processUserValue($user);
         if ($limitId && $limitValue) {
             $limitDbValue = null;
-            if ($limitId === 'subtree') {
+            if ($limitId === 'Subtree') {
                 // Figure out node ID based on input value
                 if (is_object($limitValue)) {
                     if ($limitValue instanceof eZContentObjectTreeNode) {
@@ -410,6 +451,12 @@ class Role
                         $node = eZContentObjectTreeNode::fetch($nodeId);
                         if (!$node) {
                             throw new TypeError("Node tree identifier '$limitValue' cannot be used as the node does not exist");
+                        }
+                    } else if (preg_match("/^object_uuid:(.*)$/", $limitValue, $matches)) {
+                        $uuid = $matches[1];
+                        $object = eZContentObject::fetchByRemoteID($uuid);
+                        if (!$object) {
+                            throw new ObjectDoesNotExist("Content object with UUID '$uuid' does not exist, cannot use as assignment limitation");
                         }
                     } else if (preg_match("/^uuid:(.*)$/", $limitValue, $matches)) {
                         $uuid = $matches[1];
@@ -469,7 +516,7 @@ class Role
     }
 
     /**
-     * Loads all policies on the exsting role and adds them to the
+     * Loads all policies from DB on the existing role and adds them to the
      * list of policies.
      *
      * @return self
@@ -484,8 +531,6 @@ class Role
             /*field_filters*/null,
             array(
                 'role_id' => $this->role->attribute('id'),
-                'module_name' => $module,
-                'function_name' => $function,
             ),
             array('module_name' => 'asc', 'function_name' => 'asc'),
             /*limit*/null, /*asObject*/true
@@ -666,12 +711,11 @@ class Role
             $values = array();
         }
         foreach ($values as $type => $value) {
-            if (!is_array($value)) {
+            if (!is_array($value) && !isset($this->singleValueLimitation[$type])) {
                 $value = array($value);
             }
             $limitationValues = $value;
-            if ($type === 'class' || $type === 'Class') {
-                $type = 'Class';
+            if ($type === 'Class' || $type === 'ParentClass') {
                 // Decode values into IDs
                 $limitationValues = array();
                 foreach ($value as $item) {
@@ -686,15 +730,14 @@ class Role
                     } else if (is_string($item)) {
                         $class = $this->lookupContentClass($item);
                         if (!$class) {
-                            throw new ObjectDoesNotExist("Policy $originalModule and parameter $type referenced content-class $item but it does not exist");
+                            throw new ObjectDoesNotExist("Policy $originalModule and parameter $type referenced content-class '$item' but it does not exist");
                         }
                         $limitationValues[] = (int)$class->attribute('id');
                     } else {
                         throw new TypeError("Unsupported value " . var_export($item, true) . " for policy $originalModule and parameter $type");
                     }
                 }
-            } else if ($type === 'section' || $type === 'Section') {
-                $type = 'Section';
+            } else if ($type === 'Section' || $type === 'UserSection') {
                 // Decode values into IDs
                 $limitationValues = array();
                 foreach ($value as $item) {
@@ -709,15 +752,14 @@ class Role
                     } else if (is_string($item)) {
                         $section = $this->lookupSection($item);
                         if (!$section) {
-                            throw new ObjectDoesNotExist("Policy $originalModule and parameter $type referenced content-class $item but it does not exist");
+                            throw new ObjectDoesNotExist("Policy $originalModule and parameter $type referenced section '$item' but it does not exist");
                         }
                         $limitationValues[] = (int)$section->attribute('id');
                     } else {
                         throw new TypeError("Unsupported value " . var_export($item, true) . " for policy $originalModule and parameter $type");
                     }
                 }
-            } else if ($type === 'subtree' || $type === 'Subtree') {
-                $type = 'Subtree';
+            } else if ($type === 'Subtree' || $type === 'User_Subtree') {
                 // Decode values into IDs
                 $limitationValues = array();
                 foreach ($value as $item) {
@@ -749,6 +791,13 @@ class Role
                             throw new TypeError("Node tree identifier '$item' for policy $originalModule and parameter $type cannot be used as the node does not exist");
                         }
                         $limitationValues[] = $node->attribute('path_string');
+                    } else if (preg_match("/^uuid:(.*)$/", $item, $matches)) {
+                        $uuid = $matches[1];
+                        $node = eZContentObjectTreeNode::fetchByRemoteID($uuid);
+                        if (!$node) {
+                            throw new TypeError("UUID '$uuid' for policy $originalModule and parameter $type cannot be used as the node does not exist");
+                        }
+                        $limitationValues[] = $node->attribute('path_string');
                     } else if (is_string($item)) {
                         $node = eZContentObjectTreeNode::fetchByRemoteID($item);
                         if (!$node) {
@@ -759,8 +808,84 @@ class Role
                         throw new TypeError("Unsupported value " . var_export($item, true) . " for policy $originalModule and parameter $type");
                     }
                 }
-            } else {
-                $type = ucfirst($type);
+            } else if ($type === 'Node') {
+                // Decode values into IDs
+                $limitationValues = array();
+                foreach ($value as $item) {
+                    if (is_object($item)) {
+                        if ($item instanceof eZContentObjectTreeNode) {
+                            $limitationValues[] = $item->attribute('node_id');
+                        } else if ($item instanceof eZContentObject) {
+                            $mainNode = $item->attribute('main_node');
+                            if (!$mainNode) {
+                                throw new TypeError("Value " . gettype($item) . " for policy $originalModule and parameter $type cannot be used as it has no main node");
+                            }
+                            $limitationValues[] = $mainNode->attribute('node_id');
+                        } else {
+                            throw new TypeError("Unsupported value type " . gettype($item) . " for policy $originalModule and parameter $type");
+                        }
+                    } else if (is_numeric($item)) {
+                        $node = eZContentObjectTreeNode::fetch($item);
+                        if (!$node) {
+                            throw new TypeError("Node ID $item for policy $originalModule and parameter $type cannot be used as the node does not exist");
+                        }
+                        $limitationValues[] = $node->attribute('node_id');
+                    } else if (preg_match("/^tree:(.*)$/", $item, $matches)) {
+                        $nodeId = ContentObject::mapTreeIdentifierToNode($matches[1]);
+                        if (!$nodeId) {
+                            throw new TypeError("Node tree identifier '$item' for policy $originalModule and parameter $type cannot be used as the tree does not exist");
+                        }
+                        $node = eZContentObjectTreeNode::fetch($nodeId);
+                        if (!$node) {
+                            throw new TypeError("Node tree identifier '$item' for policy $originalModule and parameter $type cannot be used as the node does not exist");
+                        }
+                        $limitationValues[] = $node->attribute('node_id');
+                    } else if (preg_match("/^uuid:(.*)$/", $item, $matches)) {
+                        $uuid = $matches[1];
+                        $node = eZContentObjectTreeNode::fetchByRemoteID($uuid);
+                        if (!$node) {
+                            throw new TypeError("UUID '$uuid' for policy $originalModule and parameter $type cannot be used as the node does not exist");
+                        }
+                        $limitationValues[] = $node->attribute('node_id');
+                    } else if (is_string($item)) {
+                        $node = eZContentObjectTreeNode::fetchByRemoteID($item);
+                        if (!$node) {
+                            throw new TypeError("UUID '$item' for policy $originalModule and parameter $type cannot be used as the node does not exist");
+                        }
+                        $limitationValues[] = $node->attribute('node_id');
+                    } else {
+                        throw new TypeError("Unsupported value " . var_export($item, true) . " for policy $originalModule and parameter $type");
+                    }
+                }
+            } else if ($type === 'SiteAccess') {
+                $siteAccessMap = $this->siteAccessMap;
+                // Decode values into IDs
+                $limitationValues = array();
+                foreach ($value as $item) {
+                    if (is_object($item)) {
+                        throw new TypeError("Unsupported value type " . gettype($item) . " for policy $originalModule and parameter $type");
+                    } else if (is_string($item) && isset($siteAccessMap[$item])) {
+                        $limitationValues[] = $siteAccessMap[$item]['id'];
+                    } else if (is_string($item) && preg_match("/^crc32:(.*)$/", $item, $matches)) {
+                        $limitationValues[] = $matches[1];
+                    } else if (is_numeric($item)) {
+                        // A number indicates a crc32 value, store as-is
+                        $limitationValues[] = $item;
+                    } else if (is_string($item)) {
+                        // The name did not match a site-access
+                        throw new ValueError("Site-access '${item}' defined for policy $originalModule and parameter $type, does not exist");
+                    } else {
+                        throw new TypeError("Unsupported value " . var_export($item, true) . " for policy $originalModule and parameter $type");
+                    }
+                }
+            } else if ($type === 'Owner') {
+                if ($value === 'self') {
+                    $limitationValues = array('1');
+                } else if ($value === 'anon') {
+                    $limitationValues = array('2');
+                } else {
+                    throw new ValueError("Unsupported Owner value '" . var_export($value, true) . "' for policy $originalModule and parameter $type");
+                }
             }
             $limitations[$type] = $limitationValues;
         }
@@ -795,8 +920,7 @@ class Role
                 $value = array($value);
             }
             $limitationValues = $value;
-            if ($type === 'class' || $type === 'Class') {
-                $type = 'Class';
+            if ($type === 'Class' || $type === 'ParentClass') {
                 // Decode values into IDs
                 $limitationValues = array();
                 foreach ($value as $item) {
@@ -811,15 +935,14 @@ class Role
                     } else if (is_string($item)) {
                         $class = $this->lookupContentClass($item);
                         if (!$class) {
-                            throw new ObjectDoesNotExist("Policy $originalModule and parameter $type referenced content-class $item but it does not exist");
+                            throw new ObjectDoesNotExist("Policy $originalModule and parameter $type referenced content-class '$item' but it does not exist");
                         }
                         $limitationValues[] = (int)$class->attribute('id');
                     } else {
                         throw new TypeError("Unsupported value " . var_export($item, true) . " for policy $originalModule and parameter $type");
                     }
                 }
-            } else if ($type === 'section' || $type === 'Section') {
-                $type = 'Section';
+            } else if ($type === 'Section' || $type === 'UserSection') {
                 // Decode values into IDs
                 $limitationValues = array();
                 foreach ($value as $item) {
@@ -834,15 +957,14 @@ class Role
                     } else if (is_string($item)) {
                         $section = $this->lookupSection($item);
                         if (!$section) {
-                            throw new ObjectDoesNotExist("Policy $originalModule and parameter $type referenced content-class $item but it does not exist");
+                            throw new ObjectDoesNotExist("Policy $originalModule and parameter $type referenced section '$item' but it does not exist");
                         }
                         $limitationValues[] = (int)$section->attribute('id');
                     } else {
                         throw new TypeError("Unsupported value " . var_export($item, true) . " for policy $originalModule and parameter $type");
                     }
                 }
-            } else if ($type === 'subtree' || $type === 'Subtree') {
-                $type = 'Subtree';
+            } else if ($type === 'Subtree' || $type === 'User_Subtree') {
                 // Decode values into IDs
                 $limitationValues = array();
                 foreach ($value as $item) {
@@ -874,6 +996,13 @@ class Role
                             throw new TypeError("Node tree identifier '$item' for policy $originalModule and parameter $type cannot be used as the node does not exist");
                         }
                         $limitationValues[] = $node->attribute('path_string');
+                    } else if (preg_match("/^uuid:(.*)$/", $item, $matches)) {
+                        $uuid = $matches[1];
+                        $node = eZContentObjectTreeNode::fetchByRemoteID($uuid);
+                        if (!$node) {
+                            throw new TypeError("UUID '$uuid' for policy $originalModule and parameter $type cannot be used as the node does not exist");
+                        }
+                        $limitationValues[] = $node->attribute('path_string');
                     } else if (is_string($item)) {
                         $node = eZContentObjectTreeNode::fetchByRemoteID($item);
                         if (!$node) {
@@ -884,8 +1013,84 @@ class Role
                         throw new TypeError("Unsupported value " . var_export($item, true) . " for policy $originalModule and parameter $type");
                     }
                 }
-            } else {
-                $type = ucfirst($type);
+            } else if ($type === 'Node') {
+                // Decode values into IDs
+                $limitationValues = array();
+                foreach ($value as $item) {
+                    if (is_object($item)) {
+                        if ($item instanceof eZContentObjectTreeNode) {
+                            $limitationValues[] = $item->attribute('node_id');
+                        } else if ($item instanceof eZContentObject) {
+                            $mainNode = $item->attribute('main_node');
+                            if (!$mainNode) {
+                                throw new TypeError("Value " . gettype($item) . " for policy $originalModule and parameter $type cannot be used as it has no main node");
+                            }
+                            $limitationValues[] = $mainNode->attribute('node_id');
+                        } else {
+                            throw new TypeError("Unsupported value type " . gettype($item) . " for policy $originalModule and parameter $type");
+                        }
+                    } else if (is_numeric($item)) {
+                        $node = eZContentObjectTreeNode::fetch($item);
+                        if (!$node) {
+                            throw new TypeError("Node ID $item for policy $originalModule and parameter $type cannot be used as the node does not exist");
+                        }
+                        $limitationValues[] = $node->attribute('node_id');
+                    } else if (preg_match("/^tree:(.*)$/", $item, $matches)) {
+                        $nodeId = ContentObject::mapTreeIdentifierToNode($matches[1]);
+                        if (!$nodeId) {
+                            throw new TypeError("Node tree identifier '$item' for policy $originalModule and parameter $type cannot be used as the tree does not exist");
+                        }
+                        $node = eZContentObjectTreeNode::fetch($nodeId);
+                        if (!$node) {
+                            throw new TypeError("Node tree identifier '$item' for policy $originalModule and parameter $type cannot be used as the node does not exist");
+                        }
+                        $limitationValues[] = $node->attribute('node_id');
+                    }  else if (preg_match("/^uuid:(.*)$/", $item, $matches)) {
+                        $uuid = $matches[1];
+                        $node = eZContentObjectTreeNode::fetchByRemoteID($uuid);
+                        if (!$node) {
+                            throw new TypeError("UUID '$uuid' for policy $originalModule and parameter $type cannot be used as the node does not exist");
+                        }
+                        $limitationValues[] = $node->attribute('node_id');
+                    } else if (is_string($item)) {
+                        $node = eZContentObjectTreeNode::fetchByRemoteID($item);
+                        if (!$node) {
+                            throw new TypeError("UUID $item for policy $originalModule and parameter $type cannot be used as the node does not exist");
+                        }
+                        $limitationValues[] = $node->attribute('node_id');
+                    } else {
+                        throw new TypeError("Unsupported value " . var_export($item, true) . " for policy $originalModule and parameter $type");
+                    }
+                }
+            } else if ($type === 'SiteAccess') {
+                $siteAccessMap = $this->siteAccessMap;
+                // Decode values into IDs
+                $limitationValues = array();
+                foreach ($value as $item) {
+                    if (is_object($item)) {
+                        throw new TypeError("Unsupported value type " . gettype($item) . " for policy $originalModule and parameter $type");
+                    } else if (is_string($item) && isset($siteAccessMap[$item])) {
+                        $limitationValues[] = $siteAccessMap[$item]['id'];
+                    } else if (is_string($item) && preg_match("/^crc32:(.*)$/", $item, $matches)) {
+                        $limitationValues[] = $matches[1];
+                    } else if (is_numeric($item)) {
+                        // A number indicates a crc32 value, store as-is
+                        $limitationValues[] = $item;
+                    } else if (is_string($item)) {
+                        // The name did not match a site-access
+                        throw new ValueError("Site-access '${item}' defined for policy $originalModule and parameter $type, does not exist");
+                    } else {
+                        throw new TypeError("Unsupported value " . var_export($item, true) . " for policy $originalModule and parameter $type");
+                    }
+                }
+            } else if ($type === 'Owner') {
+                if ($value === 'self') {
+                    $limitationValues = array('1');
+                } else if ($value === 'anon') {
+                    $limitationValues = array('2');
+                } else {
+                    throw new ValueError("Unsupported Owner value '$value' for policy $originalModule and parameter $type");
+                }
             }
             $limitations[$type] = $limitationValues;
         }
@@ -980,8 +1185,7 @@ class Role
     {
         $role = $this->role;
         $db = eZDB::instance();
-        if ($limitId === 'subtree') {
-            $limitId = 'Subtree';
+        if ($limitId === 'Subtree') {
             $limitValue = $limitDbValue;
         }
         $limitId = $db->escapeString($limitId ? $limitId : '');
@@ -1044,11 +1248,17 @@ class Role
                 } else {
                     throw new ValueError("Unsupported user identifier '$id'");
                 }
-            } else if (substr($user, 0, 5) === 'uuid:') {
-                $uuid = substr($user, 5);
+            } else if (substr($user, 0, 12) === 'object_uuid:') {
+                $uuid = substr($user, 12);
                 $user = eZContentObject::fetchByRemoteID($uuid);
                 if (!$user) {
                     throw new ObjectDoesNotExist("User object with UUID '$uuid' does not exist");
+                }
+            } else if (substr($user, 0, 10) === 'node_uuid:') {
+                $uuid = substr($user, 10);
+                $user = eZContentObjectTreeNode::fetchByRemoteID($uuid);
+                if (!$user) {
+                    throw new ObjectDoesNotExist("User node with UUID '$uuid' does not exist");
                 }
             } else if (substr($user, 0, 5) === 'tree:') {
                 $treeId = substr($user, 5);
@@ -1130,5 +1340,26 @@ class Role
             self::$sectionCache->put($identifier, $section);
         }
         return $section;
+    }
+
+    public function __isset($name)
+    {
+        return $name === 'siteAccessMap';
+    }
+
+    public function __get($name)
+    {
+        if ($name === 'siteAccessMap') {
+            if ($this->_siteAccessMap === 'unset') {
+                $siteAccessMap = array();
+                foreach (eZSiteAccess::siteAccessList() as $siteAccess) {
+                    $siteAccessMap[$siteAccess['name']] = $siteAccess;
+                }
+                $this->_siteAccessMap = $siteAccessMap;
+            }
+            return $this->siteAccessMap;
+        } else {
+            throw new AttributeError("Unknown attribute $name on Role instance");
+        }
     }
 }
