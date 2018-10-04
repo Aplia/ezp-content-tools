@@ -1,0 +1,365 @@
+#!/usr/bin/env php
+<?php
+use Aplia\Support\Arr;
+use \eZCLI;
+use \eZScript;
+use \eZContentObjectTreeNode;
+use \eZSiteAccess;
+use Aplia\Content\Role;
+use Aplia\Content\ContentObject;
+use Aplia\Content\Exceptions\ObjectDoesNotExist;
+
+@include_once 'config.php';
+require_once 'autoload.php';
+
+set_time_limit(0);
+
+$cli = \eZCLI::instance();
+$script = \eZScript::instance(
+    array(
+        'description' =>
+            "Export role definition in various formats",
+        'use-session' => false,
+        'use-modules' => true,
+        'use-extensions' => true,
+    )
+);
+$script->startup();
+$options = $script->getOptions("[preamble][use-namespace]", "", array(
+    'use-namespace' => 'Uses shorter namespaces for all class names and adds \'use\' statements in the preamble',
+));
+$identifiers = Arr::get($options, 'arguments');
+$preamble = Arr::get($options, 'preamble', false);
+$useNamespace = Arr::get($options, 'use-namespace') ? true : false;
+$script->initialize();
+
+$siteIni = \eZINI::instance();
+global $adminId, $anonId;
+$adminId = $siteIni->hasVariable('UserSettings', 'AdminUserID') ? (int)$siteIni->variable('UserSettings', 'AdminUserID') : 14;
+$anonId = $siteIni->variable('UserSettings', 'AnonymousUserID');;
+$siteAccessMap = array();
+foreach (eZSiteAccess::siteAccessList() as $siteAccess) {
+    $siteAccessMap[$siteAccess['id']] = $siteAccess;
+}
+
+function underscoreToCamelCase($string)
+{
+    $str = str_replace(' ', '', ucwords(str_replace('_', " ", $string)));
+    $str = lcfirst($str);
+    return $str;
+}
+
+function indentTextLines($text, $indentation=4, $first=true)
+{
+    $indentText = str_repeat(" ", $indentation);
+    $lines = preg_split("/\r\n|\r|\n/", $text);
+    if (!$first) {
+        $firstLine = array_shift($lines);
+    }
+    $lines = array_map(function ($item) use ($indentText) { return $indentText . $item; }, $lines);
+    if (!$first) {
+        array_unshift($lines, $firstLine);
+    }
+    return implode("\n", $lines);
+}
+
+function replaceWithUuidArray(&$nodeIdOrArray)
+{
+    if (is_array($nodeIdOrArray) && isset($nodeIdOrArray['node_id'])) {
+        $nodeId = $nodeIdOrArray['node_id'];
+    } else {
+        $nodeId = $nodeIdOrArray;
+    }
+
+    $node = \eZContentObjectTreeNode::fetch($nodeId);
+
+    if ($node) {
+        $nodeIdOrArray = array(
+            'node_id' => $nodeId,
+            'uuid' => $node->remoteID(),
+            'name' => $node->attribute('name'),
+        );
+    }
+}
+
+function makeNodeReference($node)
+{
+    global $adminId, $anonId;
+    $nodeId = $node->attribute('node_id');
+    $objectId = $node->attribute('contentobject_id');
+    $treeId = ContentObject::mapNodeToTreeIdentifier($nodeId);
+    if ($treeId) {
+        return 'tree:' . $treeId;
+    } else if ($objectId == $anonId) {
+        return 'id:anon';
+    } else if ($objectId == $adminId) {
+        return 'id:admin';
+    } else {
+        return 'uuid:' . $node->attribute('remote_id');
+    }
+}
+
+if ($useNamespace) {
+    $roleTypeClass = 'Role';
+} else {
+    $roleTypeClass = '\\Aplia\\Content\\Role';
+}
+
+if ($preamble) {
+    echo <<<'EOT'
+<?php
+
+EOT;
+
+    if ($useNamespace) {
+        echo <<<'EOT'
+use Aplia\Content\Role;
+
+
+EOT;
+    }
+
+    echo <<<'EOT'
+require 'config.php';
+require 'autoload.php';
+
+$cli = \eZCLI::instance();
+$script = \eZScript::instance(
+    array(
+        'description' =>
+            "Defines role definitions",
+        'use-session' => false,
+        'use-modules' => true,
+        'use-extensions' => true,
+    )
+);
+$script->startup();
+$options = $script->getOptions("", "", array());
+$script->initialize();
+
+
+$db = \eZDB::instance();
+$db->begin();
+
+
+EOT;
+}
+
+foreach ($identifiers as $identifier) {
+    $role = Role::get($identifier);
+    if (!$role) {
+        $cli->output("Unknown role $identifier");
+        continue;
+    }
+    // First fetch class to figure out languages and main language
+    $role->loadPolicies();
+    $role->loadAssignments();
+    $identifier = $role->role->attribute('name');
+    $identifierRepr = var_export($identifier, true);
+
+    $fields = array(
+        'name' => $identifierRepr,
+    );
+    $fieldsRepr = indentTextLines(var_export($fields, true), 8, false);
+    $roleNameVar = "\$" . underscoreToCamelCase($identifier . "_role");
+
+    $policies = array();
+    foreach ($role->policies as $policy) {
+        if ($policy['status'] !== 'nop') {
+            continue;
+        }
+        $policies[] = $policy;
+    }
+    $assignments = array();
+    foreach ($role->assignments as $assignment) {
+        if ($assignment['status'] !== 'nop') {
+            continue;
+        }
+        $assignments[] = $assignment;
+    }
+
+    echo "// Role '$identifier': ", count($policies), " policies\n";
+    echo "$roleNameVar = new ${roleTypeClass}(array('name' => $identifierRepr));\n";
+    echo "// Uncomment to delete existing role\n",
+         "// if (${roleNameVar}->exists()) {\n",
+         "//     ${roleNameVar}->remove();\n",
+         "// }\n";
+    echo "// Define policies\n";
+    echo "${roleNameVar}";
+    $lastIdentifier = null;
+    foreach ($policies as $policy) {
+        $policyModuleRepr = var_export($policy['module'], true);
+        if ($policy['values']) {
+            // Optimize code line if there is only limitation
+            $limitEntries = array();
+            $references = array();
+            $comments = array();
+            foreach ($policy['values'] as $key => $policyValue) {
+                $values = array();
+                $policyId = $key;
+                $isSingle = false;
+                if ($key === 'Section' || $key === 'UserSection') {
+                    foreach ($policy['values'][$key] as $value) {
+                        $section = \eZSection::fetch($value);
+                        if (!$section) {
+                            throw new ObjectDoesNotExist("The section with ID '$value' does not exist");
+                        }
+                        $values[] = var_export($section->attribute('identifier'), true);
+                    }
+                } else if ($key === 'Class' || $key === 'ParentClass') {
+                    foreach ($policy['values'][$key] as $value) {
+                        $class = \eZContentClass::fetch($value);
+                        if (!$class) {
+                            throw new ObjectDoesNotExist("The content class with ID '$value' does not exist");
+                        }
+                        $values[] = var_export($class->attribute('identifier'), true);
+                    }
+                } else if ($key === 'Subtree' || $key === 'User_Subtree') {
+                    foreach ($policy['values'][$key] as $value) {
+                        $node = \eZContentObjectTreeNode::fetchByPath($value);
+                        if (!$node) {
+                            throw new ObjectDoesNotExist("The content node with path '$value' does not exist");
+                        }
+                        $nodeRef = makeNodeReference($node);
+                        $values[] = var_export($nodeRef, true);
+                        if (!isset($references[$nodeRef])) {
+                            $comments[] = $nodeRef . ': ' . $node->attribute('name');
+                            $references[$nodeRef] = true;
+                        }
+                    }
+                } else if ($key === 'Node') {
+                    foreach ($policy['values'][$key] as $value) {
+                        $node = \eZContentObjectTreeNode::fetch($value);
+                        if (!$node) {
+                            throw new ObjectDoesNotExist("The content node with path '$value' does not exist");
+                        }
+                        $nodeRef = makeNodeReference($node);
+                        $values[] = var_export($nodeRef, true);
+                        if (!isset($references[$nodeRef])) {
+                            $comments[] = $nodeRef . ': ' . $node->attribute('name');
+                            $references[$nodeRef] = true;
+                        }
+                    }
+                } else if ($key === 'SiteAccess') {
+                    foreach ($policy['values'][$key] as $value) {
+                        if (isset($siteAccessMap[$value])) {
+                            $value = $siteAccessMap[$value]['name'];
+                        } else {
+                            $value = 'crc32:' . $value;
+                        }
+                        $values[] = var_export($value, true);
+                    }
+                } else if ($key === 'Owner') {
+                    $isSingle = true;
+                    $policyValues = $policy['values'][$key];
+                    if (in_array(1, $policyValues)) {
+                        $values[] = "'self'";
+                    } else if (in_array(1, $policyValues)) {
+                        $values[] = "'anon'";
+                    } else {
+                        $values[] = "false";
+                    }
+                } else {
+                    foreach ($policy['values'][$key] as $value) {
+                        $values[] = var_export($value, true);
+                    }
+                }
+                if ($isSingle) {
+                    $valueString = $values[0];
+                } else {
+                    $valueString = "array(" . implode(", ", $values) . ")";
+                }
+                $limitEntries[$policyId] = $valueString;
+            }
+            if (count($limitEntries) == 1) {
+                $key = key($limitEntries);
+                $valueString = $limitEntries[$key];
+                if ($comments) {
+                    foreach ($comments as $comment) {
+                        echo "\n    // ${comment}";
+                    }
+                }
+                echo "\n    ->addPolicy(${policyModuleRepr}, array(", var_export($key, true), " => ${valueString}))";
+            } else {
+                $limitStrings = array();
+                foreach ($limitEntries as $key => $limitEntryString) {
+                    $limitStrings[] = "            " . var_export($key, true) . " => ${limitEntryString}";
+                }
+                $limitString = implode(",\n", $limitStrings);
+                if ($comments) {
+                    foreach ($comments as $comment) {
+                        echo "\n    // ${comment}";
+                    }
+                }
+                echo "\n    ->addPolicy(${policyModuleRepr},\n",
+                "        array(\n${limitString}\n",
+                "        )\n",
+                "    )";
+            }
+        } else {
+            echo "\n    ->addPolicy(${policyModuleRepr})";
+        }
+    }
+
+    echo "\n// Assign to users";
+    foreach ($assignments as $assignment) {
+        $userId = $assignment['userId'];
+        $limitId = $assignment['limitId'];
+        $limitValue = $assignment['limitValue'];
+        $user = eZContentObject::fetch($userId);
+        $node = $user->attribute('main_node');
+        $objectIdentifier = null;
+        if ($node) {
+            $nodeId = $node->attribute('node_id');
+            $treeId = ContentObject::mapNodeToTreeIdentifier($nodeId);
+            if ($treeId) {
+                $objectIdentifier = 'tree:' . $treeId;
+            } else if ($userId == $anonId) {
+                $objectIdentifier = 'id:anon';
+            } else if ($userId == $adminId) {
+                $objectIdentifier = 'id:admin';
+            } else {
+                $objectIdentifier = 'node_uuid:' . $node->attribute('remote_id');
+            }
+        } else {
+            $objectIdentifier = $userId;
+        }
+        $objectIdentifierRepr = var_export($objectIdentifier, true);
+        if ($limitId && $limitValue) {
+            if ($limitId === 'Subtree') {
+                $limitNode = eZContentObjectTreeNode::fetchByPath($limitValue);
+                if (!$limitNode) {
+                    throw new ObjectDoesNotExist("Role assignment for role with ID " . $role->role->attribute('id') . " has subtree limitation $limitValue, but the referenced node path does not exist");
+                }
+                $limitNodeId = $limitNode->attribute('node_id');
+                $treeId = ContentObject::mapNodeToTreeIdentifier($limitNodeId);
+                if ($treeId) {
+                    $objectIdentifier = 'tree:' . $treeId;
+                } else {
+                    $objectIdentifier = 'uuid:' . $limitNode->attribute('remote_id');
+                }
+                echo "\n   // Assigned to: ", $node->getName();
+                echo "\n    ->addAssignment(${objectIdentifierRepr}, ", var_export($limitId, true), ", ", var_export($objectIdentifier, true), ")";
+            } else {
+                echo "\n   // Assigned to: ", $node->getName();
+                echo "\n    ->addAssignment(${objectIdentifierRepr}, ", var_export($limitId, true), ", ", var_export($limitValue, true), ")";
+            }
+        } else {
+            echo "\n    // Assigned to: ", $node->getName();
+            echo "\n    ->addAssignment(${objectIdentifierRepr})";
+        }
+    }
+    echo "\n// Create role\n    ->create()";
+    echo ";\n";
+}
+
+if ($preamble) {
+    echo <<<'EOT'
+
+$db->commit();
+$script->shutdown();
+
+EOT;
+}
+
+$script->shutdown();

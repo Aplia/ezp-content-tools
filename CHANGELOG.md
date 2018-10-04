@@ -5,6 +5,7 @@ Changelog for the `content-tools` package.
 ## 1.7.0
 
 - New API Aplia\Content\Role for working with eZRole, policies and assignments.
+- New script dump_role which dumps the eZRole as PHP code.
 
 ## 1.6.0
 
