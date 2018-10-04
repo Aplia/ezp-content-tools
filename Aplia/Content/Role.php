@@ -146,6 +146,52 @@ class Role
     }
 
     /**
+     * Checks if the role exists and returns the Role object for it.
+     * If the role does not exist returns null or the default value.
+     *
+     * @param string $name Name of role
+     * @return Role|null
+     */
+    public static function get($name, $default=null)
+    {
+        $role = new Role(array('name' => $name));
+        if (!$role->exists()) {
+            return $default;
+        }
+        return $role;
+    }
+
+    /**
+     * Checks if the role exists in eZ publish.
+     * This requires that either the name or id has been set.
+     *
+     * @return true if it exists, false otherwise
+     */
+    public function exists()
+    {
+        $this->load();
+        return $this->role !== null;
+    }
+
+    /**
+     * Removes the eZRole object and its policies and assignments if it exists.
+     * Any policies or assignment on this Role object are also cleaned, and
+     * the $role property is set to null.
+     *
+     * @return void
+     */
+    public function remove()
+    {
+        if ($this->exists()) {
+            $this->role->removeThis();
+        }
+        $this->role = null;
+        $this->assignments = array();
+        $this->policies = array();
+        $this->isPoliciesLoaded = false;
+    }
+
+    /**
      * Schedules a new policy to the role.
      * The policy is specified with access to a module and a function, as well
      * as values for the module. The module may be specified in different forms:
@@ -464,6 +510,41 @@ class Role
         }
         $this->isPoliciesLoaded = true;
         return $this;
+    }
+
+    /**
+     * Loads all assignments from DB on the existing role and adds them to the
+     * list of assignments.
+     *
+     * @return void
+     */
+    public function loadAssignments()
+    {
+        if ($this->isAssignmentsLoaded) {
+            return;
+        }
+        $db = eZDB::instance();
+        $roleId = (int)$this->role->attribute('id');
+        foreach ($db->arrayQuery("SELECT contentobject_id, limit_identifier, limit_value FROM ezuser_role WHERE role_id=${roleId}") as $row) {
+            $limitId = $row['limit_identifier'];
+            $limitValue = $row['limit_value'];
+            $limitDbValue = null;
+            if ($limitValue === 'Subtree') {
+                $node = eZContentobjectTreeNode::fetchByPath($limitValue);
+                if ($node) {
+                    $limitDbValue = $limitValue;
+                    $limitValue = $node->attribute('node_id');
+                }
+            }
+            $this->assignments[] = array(
+                'status' => 'nop',
+                'userId' => (int)$row['contentobject_id'],
+                'limitId' => $limitId,
+                'limitValue' => $limitValue,
+                'limitDbValue' => $limitDbValue,
+            );
+        }
+        $this->isAssignmentsLoaded = true;
     }
 
     /**
