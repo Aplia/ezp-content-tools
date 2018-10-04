@@ -600,7 +600,12 @@ class ContentObject
                 }
             } catch (ObjectDoesNotExist $e) {
                 if (isset($location['node'])) {
-                    throw new ValueError("Location has 'node' entry but object does not exist");
+                    if ($this->uuid) {
+                        $identifier = 'UUID ' . $this->uuid;
+                    } else {
+                        $identifier = 'ID ' . $this->id;
+                    }
+                    throw new ValueError("Location has 'node' entry but object with $identifier does not exist");
                 }
                 // Object does not exist, assuming location is meant to be created
             }
