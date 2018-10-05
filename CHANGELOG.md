@@ -2,6 +2,11 @@
 
 Changelog for the `content-tools` package.
 
+## 1.7.1
+
+- Caches related to roles are now cleared upon modification. Can be turned
+  off and called manually if needed.
+
 ## 1.7.0
 
 - New API Aplia\Content\Role for working with eZRole, policies and assignments.

@@ -13,6 +13,7 @@ use eZSection;
 use eZUser;
 use eZINI;
 use eZSiteAccess;
+use eZContentCacheManager;
 use Aplia\Support\Arr;
 use Aplia\Content\Exceptions\TypeError;
 use Aplia\Content\Exceptions\ObjectDoesNotExist;
@@ -63,6 +64,10 @@ use Aplia\Content\Exceptions\ValueError;
  * $role->addAssignment('tree:users-anon')
  * $role->update();
  * @endcode
+ * 
+ * After the role has been created or modified the necessary caches are cleared in the system.
+ * To override this set parameter 'clearCache' to false.
+ * To manually clear role caches call static method clearRoleCache().
  */
 class Role
 {
@@ -87,6 +92,12 @@ class Role
      * @var eZRole
      */
     public $role;
+    /**
+     * Whether cache should be cleared on update() or create()
+     *
+     * @var boolean
+     */
+    public $clearCache = true;
 
     /**
      * LRU cache for looking up content classes.
@@ -148,6 +159,9 @@ class Role
             }
             if (isset($params['role'])) {
                 $this->role = $params['role'];
+            }
+            if (isset($params['clearCache'])) {
+                $this->clearCache = $params['clearCache'];
             }
         }
 
@@ -638,6 +652,10 @@ class Role
 
         $this->processAssignments(/*isCreate*/true);
 
+        if ($this->clearCache) {
+            self::clearRoleCache();
+        }
+
         return $this->role;
     }
 
@@ -686,6 +704,10 @@ class Role
         }
 
         $this->processAssignments();
+
+        if ($this->clearCache) {
+            self::clearRoleCache();
+        }
 
         return $this->role;
     }
@@ -1340,6 +1362,16 @@ class Role
             self::$sectionCache->put($identifier, $section);
         }
         return $section;
+    }
+
+    /**
+     * Clears the necessary caches for the changes to roles/policies to used by the system.
+     *
+     * @return void
+     */
+    public static function clearRoleCache()
+    {
+        eZContentCacheManager::clearAllContentCache();
     }
 
     public function __isset($name)
