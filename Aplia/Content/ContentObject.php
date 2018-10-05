@@ -880,6 +880,22 @@ class ContentObject
     }
 
     /**
+     * Finds the content node ID based on input value, it supports all the same formats
+     * as lookupNode().
+     *
+     * @param string $text
+     * @return int
+     */
+    public static function lookupNodeId($text)
+    {
+        $node = self::lookupNode($text);
+        if ($node) {
+            return (int)$node->attribute('node_id');
+        }
+        return null;
+    }
+
+    /**
      * Creates the content object using current fields, attributes and locations.
      * If the content object already exists it throws an exception.
      * 

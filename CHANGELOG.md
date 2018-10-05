@@ -6,6 +6,8 @@ Changelog for the `content-tools` package.
 
 - Caches related to roles are now cleared upon modification. Can be turned
   off and called manually if needed.
+- Added ContentObject::lookupNodeId, this is similar to lookupNode() but
+  will only return the node ID.
 
 ## 1.7.0
 
