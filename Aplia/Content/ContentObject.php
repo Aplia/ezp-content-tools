@@ -896,6 +896,83 @@ class ContentObject
     }
 
     /**
+     * Finds the content object based on input value, it supports the following formats:
+     * 
+     * - node:<number> - Use as node ID to find object
+     * - node_uuid:<uuid> - Use as remote ID to find object
+     * - object:<number> - Use as object ID to find object
+     * - object_uuid:<uuid> - Use as object remote ID to find object
+     * - path:<path> - Use as url-alias path to find object
+     * 
+     * Otherwise if $text looks like a number it is used as an object ID,
+     * if not it tries to use it as a path.
+     * 
+     * @return eZContentObject or null if object could be found
+     */
+    public static function lookupObject($text)
+    {
+        $object = null;
+        if (is_numeric($text)) {
+            $object = \eZContentObject::fetch($text);
+        } else if (preg_match("/^(ez)?node:([0-9]+)$/", $text, $matches)) {
+            $text = $matches[2];
+            $node = \eZContentObjectTreeNode::fetch($text);
+            if ($node) {
+                $object = $node->object();
+            }
+        } else if (preg_match("/^(ez)?node_uuid:([a-f0-9-]+)$/i", $text, $matches)) {
+            $nodeUuid = strtolower(str_replace("-", "", $matches[2]));
+            $node = \eZContentObjectTreeNode::fetchByRemoteID($nodeUuid);
+            if ($node) {
+                $object = $node->object();
+            }
+        } else if (preg_match("/^(ez)?object:([0-9]+)$/", $text, $matches)) {
+            $objectId = $matches[2];
+            $object = \eZContentObject::fetch($objectId);
+        } else if (preg_match("/^(ez)?object_uuid:([a-f0-9-]+)$/i", $text, $matches)) {
+            $objectUuid = strtolower(str_replace("-", "", $matches[2]));
+            $object = \eZContentObject::fetchByRemoteID($objectUuid);
+        } else if (preg_match("/^path:(.+)$/", $text, $matches)) {
+            $path = $matches[1];
+            $nodeId = \eZURLAliasML::fetchNodeIDByPath($path);
+            if (!$nodeId) {
+                return null;
+            }
+            $node = \eZContentObjectTreeNode::fetch($nodeId);
+            if ($node) {
+                $object = $node->object();
+            }
+        } else if ($text) {
+            $path = $text;
+            $nodeId = \eZURLAliasML::fetchNodeIDByPath($path);
+            if (!$nodeId) {
+                return null;
+            }
+            $node = \eZContentObjectTreeNode::fetch($nodeId);
+            if ($node) {
+                $object = $node->object();
+            }
+        }
+        return $object;
+    }
+
+    /**
+     * Finds the content object ID based on input value, it supports all the same formats
+     * as lookupObject().
+     *
+     * @param string $text
+     * @return int
+     */
+    public static function lookupObjectId($text)
+    {
+        $object = self::lookupObject($text);
+        if ($object) {
+            return (int)$object->attribute('id');
+        }
+        return null;
+    }
+
+    /**
      * Creates the content object using current fields, attributes and locations.
      * If the content object already exists it throws an exception.
      * 

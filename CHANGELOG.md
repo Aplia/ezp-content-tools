@@ -8,6 +8,8 @@ Changelog for the `content-tools` package.
   off and called manually if needed.
 - Added ContentObject::lookupNodeId, this is similar to lookupNode() but
   will only return the node ID.
+- Added ContentObject::lookupObject and ContentObject::lookupObjectId to
+  return content object and content object ID based on input value.
 
 ## 1.7.0
 
