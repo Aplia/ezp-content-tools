@@ -1372,6 +1372,7 @@ class Role
     public static function clearRoleCache()
     {
         eZContentCacheManager::clearAllContentCache();
+        eZUser::cleanupCache();
     }
 
     public function __isset($name)
