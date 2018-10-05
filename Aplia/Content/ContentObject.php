@@ -844,7 +844,7 @@ class ContentObject
         } else if (preg_match("/^(ez)?node:([0-9]+)$/", $text, $matches)) {
             $text = $matches[2];
             $node = \eZContentObjectTreeNode::fetch($text);
-        } else if (preg_match("/^(ez)?node_uuid:([a-f0-9-]+)$/i", $text, $matches)) {
+        } else if (preg_match("/^(eznode_uuid|node_uuid|uuid):([a-f0-9-]+)$/i", $text, $matches)) {
             $nodeUuid = strtolower(str_replace("-", "", $matches[2]));
             $node = \eZContentObjectTreeNode::fetchByRemoteID($nodeUuid);
         } else if (preg_match("/^(ez)?object:([0-9]+)$/", $text, $matches)) {
@@ -929,7 +929,7 @@ class ContentObject
         } else if (preg_match("/^(ez)?object:([0-9]+)$/", $text, $matches)) {
             $objectId = $matches[2];
             $object = \eZContentObject::fetch($objectId);
-        } else if (preg_match("/^(ez)?object_uuid:([a-f0-9-]+)$/i", $text, $matches)) {
+        } else if (preg_match("/^(ezobject_uuid|object_uuid|uuid):([a-f0-9-]+)$/i", $text, $matches)) {
             $objectUuid = strtolower(str_replace("-", "", $matches[2]));
             $object = \eZContentObject::fetchByRemoteID($objectUuid);
         } else if (preg_match("/^path:(.+)$/", $text, $matches)) {
