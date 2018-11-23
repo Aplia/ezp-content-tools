@@ -2,6 +2,11 @@
 
 Changelog for the `content-tools` package.
 
+## 1.7.2
+
+- Fixes to binary file import, uses temporary file with original filename
+  to make sure eZ publish stores the information correctly.
+
 ## 1.7.1
 
 - Caches related to roles are now cleared upon modification. Can be turned
