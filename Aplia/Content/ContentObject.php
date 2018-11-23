@@ -102,7 +102,7 @@ class ContentObject
     public $clearCache = true;
     public $updateNodePath = true;
     public $newVersion;
-    public $attributes = array();
+    public $attributes;
     public $attributesChange = array();
 
     public $contentObject;
@@ -1061,6 +1061,9 @@ class ContentObject
             }
         }
 
+        if ($this->attributes === null) {
+            $this->attributes = array();
+        }
         foreach ($this->attributesChange as $attr) {
             $attribute = $this->updateAttribute($attr);
             $contentAttribute = $attribute->contentAttribute;
@@ -1246,6 +1249,7 @@ class ContentObject
         if (!is_object($this->_contentClass)) {
             $this->_contentClass = $this->contentObject->contentClass();
         }
+        $this->_identifier = $this->_contentClass->attribute('identifier');
         if ($this->dataMap === null) {
             if ($this->contentVersion !== null) {
                 $this->dataMap = $this->contentVersion->dataMap();
@@ -1255,8 +1259,9 @@ class ContentObject
             }
         }
         if ($this->attributes === null) {
+            $this->attributes = array();
             foreach ($this->dataMap as $identifier => $contentAttribute) {
-                $this->attributes[$identifier] = new ContentObjectAttribute($identifer, null, array(
+                $this->attributes[$identifier] = new ContentObjectAttribute($identifier, null, array(
                     'debug' => $this->debug,
                     'debugWriter'=> $this->debugWriter,
                 ));
@@ -1377,6 +1382,9 @@ class ContentObject
 
             if ($this->attributesChange) {
                 $modifiedObject = true;
+            }
+            if ($this->attributes === null) {
+                $this->attributes = array();
             }
             foreach ($this->attributesChange as $attr) {
                 $attribute = $this->updateAttribute($attr);
@@ -2145,13 +2153,13 @@ class ContentObject
         if ($this->attributes === null) {
             $this->loadContentObject();
         }
-        if (isset($this->dataMap[$identifer])) {
-            if ($this->dataMap[$identifer]->hasContent()) {
-                return $this->dataMap[$identifer]->content();
+        if (isset($this->dataMap[$identifier])) {
+            if ($this->dataMap[$identifier]->hasContent()) {
+                return $this->dataMap[$identifier]->content();
             }
             return null;
         }
-        throw new AttributeError("No such content attribute: $identifer");
+        throw new AttributeError("No such content attribute '$identifier' in class: '" . $this->identifier . "'");
     }
 
     /**
@@ -2240,6 +2248,12 @@ class ContentObject
             }
             return $this->_contentClass;
         } else if ($name === 'identifier') {
+            if (!$this->_identifier) {
+                $this->loadContentObject();
+                if ($this->_contentClass !== 'unset') {
+                    $this->_identifier = $this->_contentClass->attribute('identifier');
+                }
+            }
             return $this->_identifier;
         } else if ($name === 'locations') {
             if ($this->_locations === null) {
