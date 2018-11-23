@@ -12,6 +12,8 @@ use Aplia\Content\Exceptions\UnsetValueError;
 use Aplia\Content\Exceptions\HtmlError;
 use Aplia\Content\Exceptions\FileDoesNotExist;
 use Aplia\Content\Exceptions\ContentError;
+use eZFile;
+use eZDir;
 
 class ContentObjectAttribute
 {
@@ -44,6 +46,10 @@ class ContentObjectAttribute
         $this->contentAttribute = Arr::get($fields, 'contentAttribute');
         $this->debug = Arr::get($fields, 'debug', false);
         $this->debugWriter = Arr::get($fields, 'debugWriter');
+        $this->tempPath = Arr::get($fields, 'tempPath', '');
+        if (!$this->tempPath) {
+            $this->tempPath = sys_get_temp_dir();
+        }
         $this->isDirty = false;
     }
 
@@ -958,38 +964,63 @@ class ContentObjectAttribute
             }
         }
 
-        if ($value instanceof ImageFile || $value instanceof BinaryFile) {
-            $path = $value->path;
-            if (!file_exists($path)) {
-                throw new FileDoesNotExist("The binary file $path does not exist, cannot import image file to '" . $attribute->attribute('identifier') . "'");
-            }
-            $contentObject = $object->contentObject;
-            $contentVersionId = $contentObject->attribute("current_version");
-            if (!$attribute->insertRegularFile($contentObject, $contentVersionId, $this->language, $path, $result)) {
-                throw new ContentError("Failed to import file $path into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
-            }
-            $content = $attribute->content();
-            if ($value->originalFilename !== null) {
-                $content->setAttribute('original_filename', $value->originalFilename);
-            }
-            $attribute->setContent($content);
-        } else if ($value instanceof \eZHTTPFile) {
-            $contentObject = $object->contentObject;
-            $contentVersionId = $contentObject->attribute("current_version");
-            $mimeData = eZMimeType::findByFileContents($value->attribute("original_filename"));
-            if (!$attribute->insertHTTPFile($contentObject, $contentVersionId, $this->language, $attribute, $value, $mimeData, $result)) {
-                throw new ContentError("Failed to import HTTP file into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
-            }
-        } else if ($value instanceof HttpFile) {
-            $content = $attribute->attribute('content');
-            if ($value->hasFile && $value->isValid) {
-                $httpFile = \eZHTTPFile::fetch($value->name);
-                if ($httpFile && $content) {
-                    $content->setHTTPFile($httpFile);
+        $tempPath = null;
+        try {
+            if ($value instanceof ImageFile || $value instanceof BinaryFile) {
+                $path = $value->path;
+                if (!file_exists($path)) {
+                    throw new FileDoesNotExist("The binary file $path does not exist, cannot import image file to '" . $attribute->attribute('identifier') . "'");
                 }
+                $contentObject = $object->contentObject;
+                $contentVersionId = $contentObject->attribute("current_version");
+                $originalFilename = $value->originalFilename;
+                $originalSuffix = $originalFilename ? eZFile::suffix($originalFilename) : null;
+                $currentSuffix = eZFile::suffix($path);
+                if ($originalSuffix !== $currentSuffix) {
+                    // Suffix is not correct, create a temporary copy with the correct name
+                    $oldPath = $path;
+                    $tempPath = $this->tempPath . "/content-import/" . $originalFilename;
+                    $tempDir = dirname($tempPath);
+                    if (!is_dir($tempDir)) {
+                        eZDir::mkdir($tempDir, 0777, true);
+                    }
+                    copy($oldPath, $tempPath);
+                    $path = $tempPath;
+                }
+                if (!$attribute->insertRegularFile($contentObject, $contentVersionId, $this->language, $path, $result)) {
+                    throw new ContentError("Failed to import file $path into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
+                }
+                $content = $attribute->content();
+                if ($value->originalFilename !== null) {
+                    $content->setAttribute('original_filename', $originalFilename);
+                }
+                $attribute->setContent($content);
+            } else if ($value instanceof \eZHTTPFile) {
+                $contentObject = $object->contentObject;
+                $contentVersionId = $contentObject->attribute("current_version");
+                $mimeData = eZMimeType::findByFileContents($value->attribute("original_filename"));
+                if (!$attribute->insertHTTPFile($contentObject, $contentVersionId, $this->language, $attribute, $value, $mimeData, $result)) {
+                    throw new ContentError("Failed to import HTTP file into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
+                }
+            } else if ($value instanceof HttpFile) {
+                $content = $attribute->attribute('content');
+                if ($value->hasFile && $value->isValid) {
+                    $httpFile = \eZHTTPFile::fetch($value->name);
+                    if ($httpFile && $content) {
+                        $content->setHTTPFile($httpFile);
+                    }
+                }
+            } else {
+                throw new ValueError("Cannot update attribute data for '{$this->identifier}', unsupported content value: " . var_export($value, true));
             }
-        } else {
-            throw new ValueError("Cannot update attribute data for '{$this->identifier}', unsupported content value: " . var_export($value, true));
+        } catch (\Exception $e) {
+            if ($tempPath && file_exists($tempPath)) {
+                unlink($tempPath);
+            }
+            throw $e;
+        }
+        if ($tempPath && file_exists($tempPath)) {
+            unlink($tempPath);
         }
     }
 
