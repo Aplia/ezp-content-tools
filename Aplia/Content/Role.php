@@ -1390,7 +1390,7 @@ class Role
                 }
                 $this->_siteAccessMap = $siteAccessMap;
             }
-            return $this->siteAccessMap;
+            return $this->_siteAccessMap;
         } else {
             throw new AttributeError("Unknown attribute $name on Role instance");
         }
