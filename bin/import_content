@@ -24,7 +24,7 @@ $script = \eZScript::instance(
     )
 );
 $script->startup();
-$options = $script->getOptions("[parent-node:][config:][temp-path:]", "", array(
+$options = $script->getOptions("[parent-node:][config:][temp-path:][yes]", "", array(
     "parent-node" => "Choose starting point for import of content objects, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id>, path:<alias-path>, or tree:<id> e.g tree:content, tree:media, tree:users, tree:top",
     "temp-path" => "Path to place to use for temporary files",
 ));
@@ -108,11 +108,18 @@ if ($tempPath && !file_exists($tempPath)) {
     mkdir($tempPath, 0777, true);
 }
 
-$options = array(
+$importOptions = array(
     'startNode' => $parentNode,
     'fileStorage' => $tempPath,
     'cli' => $cli,
+    'interactive' => true,
 );
+
+// When --yes is used interactive mode is turned off and all answers are set to yes
+if (Arr::get($options, 'yes')) {
+    $importOptions['interactive'] = false;
+    $importOptions['answerYes'] = true;
+}
 
 // Login as admin user to make sure we have access to all content
 $adminUser = \eZUser::fetch(14);
@@ -199,15 +206,15 @@ function parseJson(ContentImporter $importer, $filePath, $script) {
 
 $importer = null;
 try {
-    $importer = new ContentImporter($options);
+    $importer = new ContentImporter($importOptions);
     if ($configFile) {
         echo "Loading configuration file $configFile\n";
         $importer->loadConfiguration($configFile);
     }
 
     echo "This will import " . count($files) . " files\n";
-    if ($importer->promptYesOrNo("Do you wish to continue with import? [yes|no] ") !== "yes") {
-        throw new ImportDenied("Import stopped");
+    if ($importOptions["interactive"] && $importer->promptYesOrNo("Do you wish to continue with import? [yes|no] ") !== "yes") {
+        throw new \Aplia\Content\Exceptions\ImportDenied("Import stopped");
     }
 
     foreach ($files as $filePath) {

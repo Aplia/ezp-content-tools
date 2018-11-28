@@ -22,6 +22,7 @@ class ContentImporter
     public $recordCount = 0;
 
     public $interactive = true;
+    public $answerYes = null;
     public $askOverwrite = true;
     public $askNew = true;
     public $verbose = true;
@@ -166,6 +167,12 @@ class ContentImporter
         }
         if (isset($options['cli'])) {
             $this->cli = $options['cli'];
+        }
+        if (isset($options['interactive'])) {
+            $this->interactive = $options['interactive'];
+        }
+        if (isset($options['answerYes'])) {
+            $this->answerYes = $options['answerYes'];
         }
         if (!$this->startNode) {
             throw new UnsetValueError("ContentImporter requires startNode/start_node set");
@@ -805,11 +812,12 @@ class ContentImporter
             if ($this->fileStorage === null) {
                 $fileStorage = null;
                 if ($this->interactive) {
-                    echo "Import contains embedded file data and no storage folder has been set\n";
+                    $this->info("Import contains embedded file data and no storage folder has been set");
                     $fileStorage = $this->promptRaw("Path to temporary storage (empty to quit): ", "");
                 }
                 if (!$fileStorage) {
-                    throw new ImportDenied("Cannot import embedde file data without a storage folder");
+                    $this->info("Import contains embedded file data and no storage folder has been set");
+                    throw new ImportDenied("Cannot import embedded file data without a storage folder");
                 }
                 $this->fileStorage = $fileStorage;
                 if (!is_dir($this->fileStorage)) {
@@ -930,11 +938,13 @@ class ContentImporter
                 }
                 return;
             } else if ($this->askOverwrite) {
-                echo "Section '$identifier' already exist\n",
-                     "Name: ", $existing['name'], "\n",
-                     "Navigation Part: ", $existing['navigation_part_identifier'], "\n";
-                if ($this->promptYesOrNo("Do you wish to overwrite it? [yes|no] ") !== "yes") {
-                    return;
+                $this->info("Section '$identifier' already exist\n" .
+                     "Name: " . $existing['name'] . "\n" .
+                     "Navigation Part: " . $existing['navigation_part_identifier']);
+                if ($this->interactive) {
+                    if ($this->promptYesOrNo("Do you wish to overwrite it? [yes|no] ") !== "yes") {
+                        return;
+                    }
                 }
                 // TODO: Overwrite existing
                 return;
@@ -943,8 +953,12 @@ class ContentImporter
             }
         } else {
             if ($this->askNew) {
-                if ($this->promptYesOrNo("Section '${identifier}'${wasText} does not exist, do you wish to import it? [yes|no] ") !== "yes") {
-                    throw new ImportDenied("Section '${identifier}'${wasText}  not imported, cannot continue");
+                if ($this->interactive) {
+                    if ($this->promptYesOrNo("Section '${identifier}'${wasText} does not exist, do you wish to import it? [yes|no] ") !== "yes") {
+                        throw new ImportDenied("Section '${identifier}'${wasText}  not imported, cannot continue");
+                    }
+                } else {
+                    $this->info("Section '${identifier}'${wasText} does not exist, it will be imported");
                 }
             }
         }
@@ -1007,10 +1021,12 @@ class ContentImporter
                 }
                 return;
             } else if ($this->askOverwrite) {
-                echo "Content language '$identifier' already exist\n",
-                     "Name: ", $existing['name'], "\n";
-                if ($this->promptYesOrNo("Do you wish to overwrite it? [yes|no] ") !== "yes") {
-                    return;
+                $this->info("Content language '$identifier' already exist\n" .
+                     "Name: " . $existing['name']);
+                if ($this->interactive) {
+                    if ($this->promptYesOrNo("Do you wish to overwrite it? [yes|no] ") !== "yes") {
+                        return;
+                    }
                 }
                 // TODO: Overwrite existing
                 return;
@@ -1019,8 +1035,12 @@ class ContentImporter
             }
         } else {
             if ($this->askNew) {
-                if ($this->promptYesOrNo("Content language '$identifier' does not exist, do you wish to import it? [yes|no] ") !== "yes") {
-                    throw new ImportDenied("Content language '$identifier' not imported, cannot continue");
+                if ($this->interactive) {
+                    if ($this->promptYesOrNo("Content language '$identifier' does not exist, do you wish to import it? [yes|no] ") !== "yes") {
+                        throw new ImportDenied("Content language '$identifier' not imported, cannot continue");
+                    }
+                } else {
+                    $this->info("Content language '$identifier' does not exist, it will be imported");
                 }
             }
         }
@@ -1082,9 +1102,11 @@ class ContentImporter
             var_dump(array_keys($stateData['states']), $this->stateIndex[$identifier]['states'], array_diff(array_keys($stateData['states']), $this->stateIndex[$identifier]['states']));
             // TODO: Check if all states are the same, if so skip it
             if ($this->askOverwrite) {
-                echo "Content object state '$identifier' already exist\n";
-                if ($this->promptYesOrNo("Do you wish to overwrite it? [yes|no] ") !== "yes") {
-                    return;
+                $this->info("Content object state '$identifier' already exist");
+                if ($this->interactive) {
+                    if ($this->promptYesOrNo("Do you wish to overwrite it? [yes|no] ") !== "yes") {
+                        return;
+                    }
                 }
                 // TODO: Overwrite existing
                 return;
@@ -1093,8 +1115,12 @@ class ContentImporter
             }
         } else {
             if ($this->askNew) {
-                if ($this->promptYesOrNo("Content object state '$identifier' does not exist, do you wish to import it? [yes|no] ") !== "yes") {
-                    throw new ImportDenied("Content object state '$identifier' not imported, cannot continue");
+                if ($this->interactive) {
+                    if ($this->promptYesOrNo("Content object state '$identifier' does not exist, do you wish to import it? [yes|no] ") !== "yes") {
+                        throw new ImportDenied("Content object state '$identifier' not imported, cannot continue");
+                    }
+                } else {
+                    $this->info("Content object state '$identifier' does not exist, it will be imported");
                 }
             }
         }
@@ -2023,25 +2049,33 @@ class ContentImporter
             foreach (array_slice($this->nodeMissingIndex, 0, 5) as $nodeUuid => $children) {
                 $missingPaths[] = $nodeUuid;
             }
-            echo "There are still missing " . count($this->nodeMissingIndex) . " parent nodes\n";
+            $this->info("There are still missing " . count($this->nodeMissingIndex) . " parent nodes");
             foreach ($missingPaths as $missingPath) {
-                echo "- ${missingPath}\n";
+                $this->info("- ${missingPath}");
             }
-            if ($this->promptYesOrNo("Do you wish to reassign them to start node? [yes/no] ") === 'yes') {
-                $startNodeUuid = $this->startNode->remoteID();
-                $startNodeId = $this->startNode->attribute('node_id');
-                foreach ($this->nodeMissingIndex as $nodeUuid => $children) {
-                    $this->nodeIndex[$startNodeUuid]['children'] = array_merge($this->nodeIndex[$startNodeUuid]['children'], $children);
-                    foreach ($children as $childNodeUuid) {
-                        $this->nodeIndex[$childNodeUuid]['parent_uuid'] = $startNodeUuid;
+            if ($this->interactive) {
+                if ($this->promptYesOrNo("Do you wish to reassign them to start node? [yes/no] ") === 'yes') {
+                    $startNodeUuid = $this->startNode->remoteID();
+                    $startNodeId = $this->startNode->attribute('node_id');
+                    foreach ($this->nodeMissingIndex as $nodeUuid => $children) {
+                        $this->nodeIndex[$startNodeUuid]['children'] = array_merge($this->nodeIndex[$startNodeUuid]['children'], $children);
+                        foreach ($children as $childNodeUuid) {
+                            $this->nodeIndex[$childNodeUuid]['parent_uuid'] = $startNodeUuid;
+                        }
+                        unset($this->nodeMissingIndex[$nodeUuid]);
+                        if ($this->verbose) {
+                            echo "Reassigned parent node $nodeUuid to $startNodeUuid (" . $startNodeId . ")\n";
+                        }
                     }
-                    unset($this->nodeMissingIndex[$nodeUuid]);
-                    if ($this->verbose) {
-                        echo "Reassigned parent node $nodeUuid to $startNodeUuid (" . $startNodeId . ")\n";
-                    }
+                } else {
+                    throw new ImportDenied("Parent nodes missing, aborting import");
                 }
             } else {
-                throw new ImportDenied("Parent nodes missing, aborting import");
+                if ($this->answerYes) {
+                    $this->info("Parents will be reassigned to start node");
+                } else {
+                    throw new ImportDenied("Parent nodes missing, aborting import");
+                }
             }
         }
 
@@ -2207,12 +2241,21 @@ class ContentImporter
                     $owner = eZContentObject::fetchByRemoteID($ownerUuid, false);
                     $foundOwner = (bool)$owner;
                 }
-                if (!$foundOwner && $this->interactive) {
-                    echo "Object UUID ${objectUuid} (name=${objectName}) has owner UUID ${ownerUuid} (name=${ownerName}), but owner object was not found\n";
-                    if ($this->promptYesOrNo("Do you wish to reset ownership for this owner? [yes/no] ") === 'yes') {
-                        $removeOwner = true;
+                if (!$foundOwner) {
+                    $this->info("Object UUID ${objectUuid} (name=${objectName}) has owner UUID ${ownerUuid} (name=${ownerName}), but owner object was not found");
+                    if ($this->interactive) {
+                        if ($this->promptYesOrNo("Do you wish to reset ownership for this owner? [yes/no] ") === 'yes') {
+                            $removeOwner = true;
+                        } else {
+                            throw new ImportDenied("Object UUID ${objectUuid} has owner UUID ${ownerUuid} (name=${ownerName}), but owner object was not found");
+                        }
                     } else {
-                        throw new ImportDenied("Object UUID ${objectUuid} has owner UUID ${ownerUuid} (name=${ownerName}), but owner object was not found");
+                        if ($this->answerYes) {
+                            $this->info("Ownership will be reset");
+                            $removeOwner = true;
+                        } else {
+                            throw new ImportDenied("Object UUID ${objectUuid} has owner UUID ${ownerUuid} (name=${ownerName}), but owner object was not found");
+                        }
                     }
                 } else if (!$foundOwner) {
                     $removeOwner = true;
@@ -2251,12 +2294,21 @@ class ContentImporter
                         $relationObject = eZContentObject::fetchByRemoteID($relationUuid, false);
                         $foundRelation = (bool)$relationObject;
                     }
-                    if (!$foundRelation && $this->interactive) {
-                        echo "Object UUID ${objectUuid} (name=${objectName}) has relation UUID ${relationUuid} (name=${relationName}), but relation object was not found\n";
-                        if ($this->promptYesOrNo("Do you wish to remove this relation? [yes/no] ") === 'yes') {
-                            $removeRelation = true;
+                    if (!$foundRelation) {
+                        $this->info("Object UUID ${objectUuid} (name=${objectName}) has relation UUID ${relationUuid} (name=${relationName}), but relation object was not found");
+                        if ($this->interactive) {
+                            if ($this->promptYesOrNo("Do you wish to remove this relation? [yes/no] ") === 'yes') {
+                                $removeRelation = true;
+                            } else {
+                                throw new ImportDenied("Object UUID ${objectUuid} has relation UUID ${relationUuid} (name=${relationName}), but relation object was not found");
+                            }
                         } else {
-                            throw new ImportDenied("Object UUID ${objectUuid} has relation UUID ${relationUuid} (name=${relationName}), but relation object was not found");
+                            if ($this->answerYes) {
+                                $this->info("Relation will be removed");
+                                $removeRelation = true;
+                            } else {
+                                throw new ImportDenied("Object UUID ${objectUuid} has relation UUID ${relationUuid} (name=${relationName}), but relation object was not found");
+                            }
                         }
                     } else if (!$foundRelation) {
                         $removeRelation = true;
@@ -2393,7 +2445,7 @@ class ContentImporter
                             'value' => null,
                         );
                     } else if ($this->interactive) {
-                        echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist in import nor in DB\n";
+                        $this->info("Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist in import nor in DB");
                         if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no] ") !== 'yes') {
                             $failed = true;
                         } else {
@@ -2402,7 +2454,15 @@ class ContentImporter
                             );
                         }
                     } else {
-                        $failed = true;
+                        $this->info("Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist in import nor in DB");
+                        if ($this->answerYes) {
+                            $this->info("Relation will be removed");
+                            return array(
+                                'value' => null,
+                            );
+                        } else {
+                            $failed = true;
+                        }
                     }
                     if ($failed) {
                         throw new ImportDenied("Failed to find object relation for attribute $identifier, the object with UUID $objectUuid (ID=$objectId, name=$objectName) does not exist");
@@ -2442,7 +2502,7 @@ class ContentImporter
                         $isChanged = true;
                         continue;
                     } else if ($this->interactive) {
-                        echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist\n";
+                        $this->info("Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist");
                         if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no] ") !== 'yes') {
                             $failed = true;
                         } else {
@@ -2450,7 +2510,14 @@ class ContentImporter
                             continue;
                         }
                     } else {
-                        $failed = true;
+                        $this->info("Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist");
+                        if ($this->answerYes) {
+                            $this->info("Relation will be removed");
+                            $isChanged = true;
+                            continue;
+                        } else {
+                            $failed = true;
+                        }
                     }
                     if ($failed) {
                         throw new ImportDenied("Failed to find object relation for attribute $identifier, the object with UUID $objectUuid (ID=$objectId, name=$objectName) does not exist");
@@ -2507,10 +2574,18 @@ class ContentImporter
                             // storing a reference to the object, instead empty the embed
                             $isChanged = true;
                             continue;
-                        } else if ($this->interactive) {
-                            echo "XML: Embedded object with UUID ${embedUuid} was not found\n";
-                            if ($this->promptYesOrNo("Do you wish to remove embed entry? [yes/no] ") !== 'no') {
-                                throw new ImportDenied("XML content for attribute ${identifier} has embedded object with UUID ${embedUuid} which does not exist");
+                        } else {
+                            $this->info("XML: Embedded object with UUID ${embedUuid} was not found");
+                            if ($this->interactive) {
+                                if ($this->promptYesOrNo("Do you wish to remove embed entry? [yes/no] ") !== 'no') {
+                                    throw new ImportDenied("XML content for attribute ${identifier} has embedded object with UUID ${embedUuid} which does not exist");
+                                }
+                            } else {
+                                if ($this->answerYes) {
+                                    $this->info("The embedded entry will be removed from XML");
+                                } else {
+                                    throw new ImportDenied("XML content for attribute ${identifier} has embedded object with UUID ${embedUuid} which does not exist");
+                                }
                             }
                         }
                         $parentNode = $embed->parentNode;
@@ -2989,15 +3064,20 @@ class ContentImporter
                 $object = eZContentObject::fetchByRemoteID($objectUuid);
                 if (!$object) {
                     $failed = false;
+                    $this->info("Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist");
                     if ($this->interactive) {
-                        echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist\n";
                         if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no] ") !== 'yes') {
                             $failed = true;
                         } else {
                             return null;
                         }
                     } else {
-                        $failed = true;
+                        if ($this->answerYes) {
+                            $this->info("Relation will be removed");
+                            return null;
+                        } else {
+                            $failed = true;
+                        }
                     }
                     if ($failed) {
                         throw new ImportDenied("Failed to find object relation for attribute $identifier, the object with UUID $objectUuid (ID=$objectId, name=$objectName) does not exist");
@@ -3023,14 +3103,19 @@ class ContentImporter
                 if (!$object) {
                     $failed = false;
                     if ($this->interactive) {
-                        echo "Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist\n";
+                        $this->info("Object attribute $identifier with type $dataType has a relation to object with UUID $objectUuid (ID=$objectId, name=$objectName), but the object does not exist");
                         if ($this->promptYesOrNo("Do you wish to remove the relation? [yes/no] ") !== 'yes') {
                             $failed = true;
                         } else {
                             continue;
                         }
                     } else {
-                        $failed = true;
+                        if ($this->answerYes) {
+                            $this->info("Relation will be removed");
+                            continue;
+                        } else {
+                            $failed = true;
+                        }
                     }
                     if ($failed) {
                         throw new ImportDenied("Failed to find object relation for attribute $identifier, the object with UUID $objectUuid (ID=$objectId, name=$objectName) does not exist");
