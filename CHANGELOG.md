@@ -2,6 +2,11 @@
 
 Changelog for the `content-tools` package.
 
+## 1.7.4
+
+- Added option `--yes` to turn off interactive mode and assume yes on all
+  questions that would have been asked.
+
 ## 1.7.2
 
 - Fixes to binary file import, uses temporary file with original filename
