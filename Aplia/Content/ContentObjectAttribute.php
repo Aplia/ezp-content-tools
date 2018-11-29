@@ -428,8 +428,10 @@ class ContentObjectAttribute
                     $value = null;
                 }
             } else if ($value instanceof \eZContentObject) {
+                $object = $value;
                 $value = $object->attribute('id');
             } else if ($value instanceof \eZContentObjectTreeNode) {
+                $object = $value;
                 $value = $object->attribute('contentobject_id');
             } else if ($value === null) {
             } else {
@@ -459,8 +461,10 @@ class ContentObjectAttribute
                             $objectIds[] = $object->attribute('id');
                         }
                     } else if ($objectData instanceof \eZContentObject) {
+                        $object = $objectData;
                         $objectIds[] = $object->attribute('id');
                     } else if ($objectData instanceof \eZContentObjectTreeNode) {
+                        $object = $objectData;
                         $objectIds[] = $object->attribute('contentobject_id');
                     } else if ($objectData === null) {
                         continue;
@@ -469,8 +473,10 @@ class ContentObjectAttribute
                     }
                 }
             } else if ($value instanceof \eZContentObject) {
+                $object = $value;
                 $objectIds[] = $object->attribute('id');
             } else if ($value instanceof \eZContentObjectTreeNode) {
+                $object = $value;
                 $objectIds[] = $object->attribute('contentobject_id');
             } else if ($value === null) {
             } else {

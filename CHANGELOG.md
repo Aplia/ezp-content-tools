@@ -2,6 +2,10 @@
 
 Changelog for the `content-tools` package.
 
+## 1.7.5
+
+- Fixed bug in updating object relation attributes using eZ objects.
+
 ## 1.7.4
 
 - Added option `--yes` to turn off interactive mode and assume yes on all
