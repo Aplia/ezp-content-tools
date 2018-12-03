@@ -433,6 +433,7 @@ class ContentObjectAttribute
             } else if ($value instanceof \eZContentObjectTreeNode) {
                 $object = $value;
                 $value = $object->attribute('contentobject_id');
+            } else if (is_int($value) || is_string($value)) { // presume contentobject id
             } else if ($value === null) {
             } else {
                 throw new TypeError("Unsupported value for ezobjectrelation attribute '" . $attribute->attribute('identifier') . "', value=" . var_export($value, true));
