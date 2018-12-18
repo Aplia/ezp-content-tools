@@ -226,10 +226,14 @@ foreach ($identifiers as $identifier) {
             $attributeTypeRepr = var_export($classAttribute->attribute('data_type_string'), true);
             $attributeIdentifier = $classAttribute->attribute('identifier');
             $attributeIdentifierRepr = var_export($attributeIdentifier, true);
+            $attributeDescription = $classAttribute->attribute('description');
+            $attributeCategory = $classAttribute->attribute('category');
             $attributeNameRepr = var_export($classAttribute->name($mainLocale), true);
             $attributeFields = array(
                 'identifier' => $attributeIdentifier,
                 'name' => $classAttribute->name($mainLocale),
+                'description' => $attributeDescription,
+                'category' => $attributeCategory,
             );
             $attributeCustomFields = $attribute->attributeFields();
             if ($attributeCustomFields !== null) {

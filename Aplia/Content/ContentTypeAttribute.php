@@ -90,6 +90,9 @@ class ContentTypeAttribute
             if (isset($fields['description'])) {
                 $this->description = $fields['description'];
             }
+            if (isset($fields['category'])) {
+                $this->category = $fields['category'];
+            }
             if (isset($fields['language'])) {
                 $this->language = $fields['language'];
             }
@@ -126,6 +129,7 @@ class ContentTypeAttribute
             'is_searchable' => $this->isSearchable !== null ? $this->isSearchable : true,
             'can_translate' => $this->canTranslate !== null ? $this->canTranslate : true,
             'is_information_collector' => $this->isInformationCollector !== null ? $this->isInformationCollector : false,
+            'category' => $this->category !== null ? $this->category : '',
         );
         if ($this->id) {
             $existing = eZContentClassAttribute::fetchObject($this->id);
@@ -238,6 +242,9 @@ class ContentTypeAttribute
         }
         if ($this->isInformationCollector !== null) {
             $fields['is_information_collector'] = $this->isInformationCollector;
+        }
+        if ($this->category !== null) {
+            $fields['category'] = $this->category;
         }
 
         // If type is not changed then load from the class attribute
