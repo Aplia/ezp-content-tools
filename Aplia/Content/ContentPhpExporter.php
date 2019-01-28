@@ -82,6 +82,7 @@ EOT
         $className = $contentObject['class_identifier'];
         $classNameRepr = "\$" . underscoreToCamelCase($className) . "Type";
         $objectNameRepr = "\$" . lcfirst(str_replace(" ", "", trim($objectName))) . ucfirst(underscoreToCamelCase($className));
+        $objectNameRepr = str_replace("-", "", $objectNameRepr);
         $contentTypeClass = $this->contentTypeClass;
 
         if ($isUpdate) {

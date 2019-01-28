@@ -66,6 +66,26 @@ To remove a class use `remove()`, just check if it `exists()` first.
 For easy access to content-class and attributs use the properties `contentClass` and `attributes`, these
 properties will lazy-load the values. Note they require that content-class exists.
 
+### ezselection2
+
+Example
+```
+<?php
+$type->addAttribute('ezselection2', 'selection2', 'Selection 2', array(
+    'value' => array(
+        'delimiter' => '',
+        'is_checkbox' => true,
+        'is_multiselect' => true,
+        'options' => array(
+            ['identifier' => 'first', 'name' => 'First', 'is_selected' => false],
+            ['identifier' => 'second', 'name' => 'Second', 'is_selected' => true],
+            ['identifier' => 'third', 'name' => 'Third', 'is_selected' => false],
+        ),
+        'use_identifier_name_pattern' => true,
+    )
+));
+```
+
 ## Groups
 
 Class-groups can be managed using `ContentType`. To create or delete groups use `ContentType::createGroup`
@@ -367,6 +387,21 @@ $object->setAttribute('body', new Aplia\Content\HtmlText('<p>My text</p>'));
 This expects the selection value to be the integer value for the key which
 is selected, the first selection is `0`, the next `1` and so on.
 
+
+### ezselection2
+
+Indentifiers can be specified the same way the datatype support `fromString`.
+
+```
+<?php
+$object->setAttribute('selection2', 'first|second')
+```
+
+Or as array
+```
+<?php
+$object->setAttribute('selection2', ['first', 'second'])
+```
 
 ### ezimage
 

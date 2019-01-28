@@ -533,6 +533,11 @@ class ContentObjectAttribute
                 }
             }
             $asString = true;
+        } else if ($type === 'ezselection2') {
+            if (is_array($value)) {
+                $value = implode('|', $value);
+            }
+            $asString = true;
         } else if ($type === 'ezurl') {
             $fields = null;
             if (isset($value['url'])) {

@@ -412,6 +412,43 @@ class ContentTypeAttribute
         return $xmlObj->asXML();
     }
 
+    public function makeSelection2Xml(array $value)
+    {
+        $xmlObj = new SimpleXMLElement('<?xml version="1.0" encoding="UTF-8"?><content/>');
+
+        if (isset($value['delimiter'])) {
+            $d = $xmlObj->addChild('delimiter');
+            $node = dom_import_simplexml($d);
+            $no = $node->ownerDocument;
+            $node->appendChild($no->createCDATASection($value['delimiter']));
+        }
+
+        if (isset($value['is_checkbox'])) {
+            $xmlObj->addChild('checkbox')[0] = $value['is_checkbox'];
+        }
+
+        if (isset($value['is_multiselect'])) {
+            $xmlObj->addChild('multiselect')[0] = $value['is_multiselect'];
+        }
+
+        if (isset($value['options']) && $value['options']) {
+            $options = $value['options'];
+            $optionsXML = $xmlObj->addChild('options');
+            foreach ($options as $option) {
+                $optionXML = $optionsXML->addChild('option');
+                $optionXML->addAttribute('identifier', $option['identifier']);
+                $optionXML->addAttribute('name', $option['name']);
+                $optionXML->addAttribute('value', $option['is_selected']);
+            }
+        }
+
+        if (isset($value['use_identifier_name_pattern'])) {
+            $xmlObj->addChild('use_identifier_name_pattern')[0] = $value['use_identifier_name_pattern'];
+        }
+
+        return $xmlObj->asXML();
+    }
+
     public function objectRelationSelectionTypeMap($valueOrKey, $getName = false)
     {
         $return = 0;
@@ -578,6 +615,10 @@ class ContentTypeAttribute
             if (isset($value['options'])) {
                 $fields['data_text5'] = $this->makeSelectionXml($value['options']);
             }
+        } else if ($type == 'ezselection2') {
+            if (is_array($value)) {
+                $fields['data_text5'] = $this->makeSelection2Xml($value);
+            }
         } else if ($type == 'ezobjectrelation') {
             if (isset($value['selection_type'])) {
                 $content['selection_type'] = $this->objectRelationSelectionTypeMap($value['selection_type']);
@@ -707,6 +748,18 @@ class ContentTypeAttribute
         } else if ($type == 'ezselection') {
             $fields = $attribute->content();
             $fields['is_multiselect'] = (bool)$fields['is_multiselect'];
+            return $fields;
+        } else if ($type == 'ezselection2') {
+            $fields = $attribute->content();
+            if (is_array($fields['options']) and $fields['options']) {
+                $_options = [];
+                foreach ($fields['options'] as $o) {
+                    $o['is_selected'] = $o['value'];
+                    unset($o['value']);
+                    $_options[] = $o;
+                }
+                $fields['options'] = $_options;
+            }
             return $fields;
         } else if ($type == 'ezobjectrelation') {
             $content = $attribute->content();
