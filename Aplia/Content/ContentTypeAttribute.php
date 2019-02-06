@@ -40,6 +40,7 @@ class ContentTypeAttribute
     public $value;
     public $id;
     public $description;
+    public $category;
     /**
      * If set places the new attribute after this attribute, specified with an identifier
      */
