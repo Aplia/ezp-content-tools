@@ -424,6 +424,12 @@ class ContentObjectAttribute
                         throw new ValueError("Cannot set ezobjectrelation content, object with UUID '" . $value['object_uuid'] . "' does not exists");
                     }
                     $value = $object->attribute('id');
+                } elseif (isset($value['object_id'])) {
+                    $object = \eZContentObject::fetch($value['object_id']);
+                    if (!$object) {
+                        throw new ValueError("Cannot set ezobjectrelation content, object with id '" . $value['object_id'] . "' does not exists");
+                    }
+                    $value = $object->attribute('id');
                 } else {
                     $value = null;
                 }
