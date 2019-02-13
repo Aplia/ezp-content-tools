@@ -632,7 +632,7 @@ class ContentType
             $isDirty = true;
         }
         if ($this->contentObjectName !== null) {
-            $contentClass->setAttribute('content_object_name', $this->contentObjectName);
+            $contentClass->setAttribute('contentobject_name', $this->contentObjectName);
             $isDirty = true;
         }
         if ($this->urlAliasName !== null) {
@@ -640,7 +640,7 @@ class ContentType
             $isDirty = true;
         }
         if ($this->isContainer !== null) {
-            $contentClass->setAttribute('isContainer', $this->isContainer);
+            $contentClass->setAttribute('is_container', $this->isContainer);
             $isDirty = true;
         }
         if ($this->alwaysAvailable !== null) {
