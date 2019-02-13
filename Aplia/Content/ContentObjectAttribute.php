@@ -485,6 +485,8 @@ class ContentObjectAttribute
             } else if ($value instanceof \eZContentObjectTreeNode) {
                 $object = $value;
                 $objectIds[] = $object->attribute('contentobject_id');
+            } else if (is_string($value)) {
+                $objectIds = explode("-", $value);
             } else if ($value === null) {
             } else {
                 throw new TypeError("Unsupported value for ezobjectrelation attribute '" . $attribute->attribute('identifier') . "', value=" . var_export($value, true));
