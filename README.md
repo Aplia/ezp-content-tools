@@ -416,6 +416,93 @@ then the image file will be available in the file entry `portrait_image`.
 $object->setAttribute('image', new Aplia\Content\HttpFile('portrait_image'));
 ```
 
+## Content Export/Import
+Content-tools has support for exporting/importing subtrees across sites, while also preserving ownership, relations, and embedded content. Remember to not have mismatching package versions of this when exporting from one project, and importing to another. It might require the use of a config file in the import, which maps content in the export to content in the destination. See section "Configuration for import" for more info regarding this.
+
+### Content Export
+Exporting content is done with `bin/dump_content`. At the time of writing, these are the current available options:
+
+(`vendor/bin/dump_content --help`)
+```
+Options:
+  --format=VALUE           Type of format, choose between json, ndjson, php and line
+  --preamble               Whether to include preamble when exporting php (php format only)
+  --use-namespace          Whether to include ContentType namespace use statement (php format only)
+  --class=VALUE            Limit search of objects to only these type of content-classes. Comma separated list
+  --parent-node=VALUE      Choose starting point for export, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id> or path:<alias-path>
+  --depth=VALUE            Choose how deep in the tree structure to search, defaults to 1 level. Use * for unlimited
+  --exclude-parent         Exclude the parent node from the export, the result is then only the child/sub-nodes
+  --only-visible           Only export visible nodes
+  --file-storage=VALUE     Store file content in specified folder, instead of embedding as base64 in export.
+  --include-relations      Include all objects which are related in export
+  --include-embeds         Include all objects which are embedded in export
+  --include-owners         Include objects for all owners
+  --include-parents        Include all parents of objects
+  --no-exclude-top-nodes   Turn off exclusion of top-level nodes
+  --exclude-node=VALUE...  Excluded specific node from export, can be used multiple times
+  --summary                Include commented summary at the end (php format only)
+```
+
+Script echoes, so pipe the result to file.
+
+#### Examples
+Here is a configuration which will export all objects of the given content_class, under the given path (container_path, corresponding to `--parent-node`-option). This export assumes the parent directory already exists on the import destination (i.e. remove `--exclude-parent` if the entire directory is to be imported).
+
+(Values in chevrons ('<>') should be replaced with your own options.)
+```
+vendor/bin/dump_content <container_path> --class=<content_class> --exclude-parent --file-storage=export_files --format=ndjson > <export_name>.ndjson;
+```
+
+When setting file storage path, this folder should be located in the same folder as the export files. For example:
+```
+export_content
+|-  <export_name.ndjson>
+|-  export_files
+    |-  file 1
+    |-  file 2
+```
+
+### Content Import
+Importing content is done with `bin/import_content`. At the time of writing, these are the current available options:
+
+(`vendor/bin/import_content --help`)
+```
+--parent-node=VALUE  Choose starting point for import of content objects, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id>, path:<alias-path>, or tree:<id> e.g tree:content, tree:media, tree:users, tree:top
+--config=VALUE       Config file for mapping content in the export (e.g. node ids, uuids) to content in the import destination. See more about this in the section about configuration.
+--temp-path=VALUE    Path to place to use for temporary files
+--yes                Whether to answer yes on all questions. Use with care.
+```
+
+The import logs through stdout, so pipe to file to save log output. For example use ` | tee import_log.txt`. (Piping to tee might not show interactive questions, so be sure that the script is not waiting for question response, if no update is showing.)
+
+The script might ask whether to remove object relation, or reset ownership, if the object in question neither exists in the target database, or in the import. (Big imports might prompt for this A LOT, which is why the `--yes`-parameter was added.)
+
+NB! The content import starts a database transaction, and does not commit before the entire import is finished. This way, in case of errors, an unsuccessful import will rollback the database transaction, so that no wrong data is committed to the database. This means that while the import is running, publishing new content on the destination will not work, and will give a database transaction error. See section "Batch Export/Import" for examples on how to make content publishing possible while importing content.
+
+#### Examples
+```
+vendor/bin/import_content --temp-path=temp --parent-node=path:kompetansetorget --config=extension/site/import/<config_file>.ini <export_file>
+```
+
+### NB! Batch Export/Import
+By dividing the exported content into multiple files, we reduce the number of operations before content is committed to the database, and thereby make it possible to publish content.
+
+(This is the only current support for this because of all the actions required for import of a given object. I.e.: 1. Creating node/object skeleton, 2. Creating object, 3. Updating the object with data. It is done this way to be able to preserve locations, relations and ownerships when importing objects which depend on other objects)
+
+#### Examples
+
+- Export:
+Given an existing export `<export_name>`.ndjson, the following bash script will divide the export into a .head file, which will be prepended to the numbered files. It takes the first occurence of `ez_contentobject`, and splits the following on 5 lines, which corresponds to 5 content objects. PS: This can generate a lot of files.
+```
+cat <export_name>.ndjson | sed -e '/ez_contentobject/,$d' > <export_name>.head; cat <export_name>.ndjson | sed -n -e '/ez_contentobject/,$p' | split -l5 - <export_name>- --additional-suffix=.tmp --numeric-suffixes=1; for f in <export_name>-*.tmp; do cat <export_name>.head "$f" > "${f%.*}".ndjson; rm "$f"; done
+```
+
+- Import:
+```
+for f in <export_name>-*.ndjson; do vendor/bin/import_content --temp-path=temp --parent-node=path:<path> --config=extension/site/import/<config_file>.ini "$f" | tee import_log.txt; done
+```
+
+
 ## Configuration for import
 
 The content importer supports using a configuration file to define
