@@ -19,11 +19,12 @@ $script = \eZScript::instance(
 $script->initialize();
 $script->startup();
 
-$options = $script->getOptions( "[replace][ignore:][case-insensitive][print-urls]", "", array(
+$options = $script->getOptions( "[replace][ignore:][case-insensitive][print-urls][new-version]", "", array(
     'replace' => 'Perform replace action',
     'ignore' => 'Contentobject ids to ignore. Separate multiple ids with comma (\',\')',
     'case-insensitive' => 'Case insensitive search',
     'print-urls' => 'Print urls instead of path_identification_string (fetches every node when printing)',
+    'new-version' => 'Whether to publish new version',
 ));
 
 $obj = new SearchAndReplace( $options );
@@ -40,6 +41,7 @@ class SearchAndReplace
         $this->ignoreIds = isset($params['ignore']) ? explode(',', $params['ignore']) : array();
         $this->binary = isset($params['case-insensitive']) ? '' : ' BINARY';
         $this->urls = isset($params['print-urls']);
+        $this->newVersion = isset($params['new-version']);
         if ($searchString) {
             $objectIdentifiers = $this->search($searchString);
             $objectMatches = count($objectIdentifiers);
@@ -134,7 +136,12 @@ class SearchAndReplace
             }
 
             if ($currentObject) {
-                $objectUpdater = new Aplia\Content\ContentObject(array('uuid' => $currentObject->attribute('remote_id')));
+                $params = array('uuid' => $currentObject->attribute('remote_id'));
+                if ($this->newVersion) {
+                    $params["ownerId"] = 14;
+                    $params["newVersion"] = true;
+                }
+                $objectUpdater = new Aplia\Content\ContentObject($params);
 
                 foreach ($identifiers as $identifier) {
                     $old = $objectUpdater->getContentAttributeValue($identifier);

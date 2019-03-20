@@ -725,5 +725,6 @@ NB! Some attributes might fail to update. For example eZImage. If they do, the o
 #### Other parameters
 - `--print-urls`: Whether to print urls of the objects. If not set, `path_identification_string` will be printed for every occurrence.
 - `--case-insensitive`: Case insensitive search. (The sql uses `REGEXP` on `BINARY`. Setting this omits `BINARY` from the sql.)
+- `--new-version`: Whether to publish a new version of updated object as admin. This might return template errors which can be ignored. This parameter presumes Admin user is object id 14.
 
 Run `php vendor/aplia/content-tools/Aplia/Utilities/SearchAndReplace.php --help` for a complete overview.
