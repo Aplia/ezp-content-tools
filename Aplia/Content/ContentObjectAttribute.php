@@ -1064,6 +1064,10 @@ class ContentObjectAttribute
         // Array support, must contain an 'xml' entry
         if (is_array($value) && isset($value['xml'])) {
             $value = new RawXmlText($value['xml']);
+        } else {
+            if (is_string($value)) {
+                $value = new RawXmlText($value);
+            }
         }
 
         // If we have HTML content convert it to XML text first

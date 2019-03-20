@@ -707,3 +707,23 @@ Assuming location is project root:
 ```
 php vendor/aplia/content-tools/bin/dump_contentclass preamble delete-existing update-class-group=Seksjoner update-creator-id=14 news_section campaign_section logo_section > import_content_classes.php
 ```
+
+## Utilities
+Utilities using content-tools can be found in `Aplia/Utilities`.
+
+### Search and Replace
+This utility can be used to either search for all occurrences of the given search string in all objects, or also replace the occurrence with the given replace string. The script will print the path of the matched occurrences. It uses ContentObject class to update every object.
+
+#### Search
+Assuming project root, run `php vendor/aplia/content-tools/Aplia/Utilities/SearchAndReplace.php <search_string>` to search for objects containing the given `search_string` in their attributes `data_text`.
+
+#### Replace
+Assuming project root, run `php vendor/aplia/content-tools/Aplia/Utilities/SearchAndReplace.php <search_string> <replace_string> --replace` to replace the occurences of `search_string` with `replace_string`. It might be wise to first run search, and then append the replace string after verifying all objects that will be changed. Pass the `--ignore`-parameter, with object ids separated by comma, to ignore specific objects (e.g. `--ignore=<objectId1>,<objectId2>,<objectId3>`).
+
+NB! Some attributes might fail to update. For example eZImage. If they do, the objects are simply not updated, and they are printed after running the script, for manual update.
+
+#### Other parameters
+- `--print-urls`: Whether to print urls of the objects. If not set, `path_identification_string` will be printed for every occurrence.
+- `--case-insensitive`: Case insensitive search. (The sql uses `REGEXP` on `BINARY`. Setting this omits `BINARY` from the sql.)
+
+Run `php vendor/aplia/content-tools/Aplia/Utilities/SearchAndReplace.php --help` for a complete overview.
