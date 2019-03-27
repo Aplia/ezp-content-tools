@@ -19,12 +19,13 @@ $script = \eZScript::instance(
 $script->initialize();
 $script->startup();
 
-$options = $script->getOptions( "[replace][ignore:][case-insensitive][print-urls][new-version]", "", array(
+$options = $script->getOptions( "[replace][ignore:][case-insensitive][print-urls][new-version][first-upper]", "", array(
     'replace' => 'Perform replace action',
     'ignore' => 'Contentobject ids to ignore. Separate multiple ids with comma (\',\')',
     'case-insensitive' => 'Case insensitive search',
     'print-urls' => 'Print urls instead of path_identification_string (fetches every node when printing)',
     'new-version' => 'Whether to publish new version',
+    'first-upper' => 'Whether to explicitly set first character of replace string to uppercase, when search string position is 0. (This should not normally be required, as the optimal way is to run a case sensitive search and replace, which makes this content dependent. It might be required for some strings tho (e.g. "gMail" -> "gmail" ("Gmail" for first word in titles)), and for added ease-of-use in case insensitive replacements.)',
 ));
 
 $obj = new SearchAndReplace( $options );
@@ -39,9 +40,11 @@ class SearchAndReplace
         $replaceString = isset($arguments[1]) ? $arguments[1] : '';
 
         $this->ignoreIds = isset($params['ignore']) ? explode(',', $params['ignore']) : array();
+        $this->caseInsensitive = isset($params['case-insensitive']);
         $this->binary = isset($params['case-insensitive']) ? '' : ' BINARY';
         $this->urls = isset($params['print-urls']);
         $this->newVersion = isset($params['new-version']);
+        $this->firstUpper = isset($params['first-upper']);
         if ($searchString) {
             $objectIdentifiers = $this->search($searchString);
             $objectMatches = count($objectIdentifiers);
@@ -156,7 +159,19 @@ class SearchAndReplace
                             $new = $new->ContentObjectAttributeData;
                         }
                     } else {
-                        $new = str_replace($searchString, $replaceString, $old);
+                        if ($this->caseInsensitive) {
+                            if (stripos($old, $searchString) === 0 && $this->firstUpper) {
+                                $new = str_ireplace($searchString, ucfirst($replaceString), $old);
+                            } else {
+                                $new = str_ireplace($searchString, $replaceString, $old);
+                            }
+                        } else {
+                            if (strpos($old, $searchString) === 0 && $this->firstUpper) {
+                                $new = str_replace($searchString, ucfirst($replaceString), $old);
+                            } else {
+                                $new = str_replace($searchString, $replaceString, $old);
+                            }
+                        }
                     }
 
                     $objectUpdater->setAttribute($identifier, $new);
@@ -164,14 +179,14 @@ class SearchAndReplace
                 try {
                     $objectUpdater->update();
                 } catch (Exception $e) {
-                    print("Encountered error when updating '$identifier', object id: $objectId \n");
+                    print("Encountered error when updating '$identifier', object id: $objectId. Update this manually.\n");
                     $failedObjectIds[] = $objectId;
                 }
             }
         }
 
         if ($failedObjectIds) {
-            print("Replace finished, but these objects failed:\n");
+            print("Replace finished, but these objects failed, and require manual update:\n");
             foreach ($failedObjectIds as $objectId) {
                 print(" -   $objectId\n");
             }
