@@ -127,14 +127,7 @@ class SearchAndReplace
             if (isset($contentObjectsById[$objectId])) {
                 $currentObject = $contentObjectsById[$objectId];
             } else {
-                // Somehow, some objects could be fetched with fetch, but not fetchIDArray()
-                // These objects also created errors with Aplia\Content\ContentObject
-                // $retriedObject = eZContentObject::fetch($objectId);
-                // if ($retriedObject) {
-                //     $currentObject = $retriedObject;
-                // } else {
-                    $failedObjectIds[] = $objectId;
-                // }
+                $failedObjectIds[] = $objectId;
                 $currentObject = null;
             }
 
