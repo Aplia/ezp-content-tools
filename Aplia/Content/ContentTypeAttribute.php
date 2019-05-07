@@ -125,6 +125,7 @@ class ContentTypeAttribute
 
         $fields = array(
             'identifier' => $identifier,
+            'name' => $name,
             'version' => $contentClass->attribute('version'),
             'is_required' => $this->isRequired !== null ? $this->isRequired : false,
             'is_searchable' => $this->isSearchable !== null ? $this->isSearchable : true,
@@ -144,10 +145,12 @@ class ContentTypeAttribute
         $this->setAttributeFields($fields, $content, $contentClass);
 
         $attribute = eZContentClassAttribute::create($contentClass->attribute('id'), $this->type, $fields, $this->language);
-        $attribute->setName($name);
+        $this->setName($name, $attribute);
+
         if ($this->description !== null) {
-            $attribute->setDescription($this->description);
+            $this->setDescription($this->description, $attribute);
         }
+
         if ($this->placeAfter) {
             $attributes = $contentClass->fetchAttributes();
             $placement = null;
@@ -225,6 +228,38 @@ class ContentTypeAttribute
         return $attribute;
     }
 
+    /**
+     * A local function which sets the attribute name on the class attribute for the prioritized language
+     * and all untranslated languages, to avoid empty ('') fallbacks. For a specific locale, use createTranslation(),
+     * or the class attribute functions directly (eZContentClassAttribute instance)
+     */
+    public function setName($name, $attribute)
+    {
+        if ($attribute instanceof eZContentClassAttribute) {
+            $attribute->setName($name);
+            $untranslatedLanguagesNames = $attribute->NameList->untranslatedLanguages();
+            foreach ($untranslatedLanguagesNames as $locale => $languageObject) {
+                $attribute->setName($name, $locale);
+            }
+        }
+    }
+
+    /**
+     * A local function which sets the attribute description on the class attribute for the prioritized language
+     * and all untranslated languages, to avoid empty ('') fallbacks. For a specific locale, use createTranslation(),
+     * or the class attribute functions directly (eZContentClassAttribute instance)
+     */
+    public function setDescription($description, $attribute)
+    {
+        if ($attribute instanceof eZContentClassAttribute) {
+            $attribute->setDescription($this->description);
+            $untranslatedLanguagesDescriptions = $attribute->DescriptionList->untranslatedLanguages();
+            foreach ($untranslatedLanguagesDescriptions as $locale => $languageObject) {
+                $attribute->setDescription($this->description, $locale);
+            }
+        }
+    }
+
     public function update($contentClass)
     {
         $name = $this->name;
@@ -267,10 +302,11 @@ class ContentTypeAttribute
             $attribute->setAttribute($attributeName, $attributeValue);
         }
         if ($name !== null) {
-            $attribute->setName($name);
+            $this->setName($name, $attribute);
         }
+
         if ($this->description !== null) {
-            $attribute->setDescription($this->description);
+            $this->setDescription($description, $attribute);
         }
         $placement = null;
         if ($this->placeAfter) {
