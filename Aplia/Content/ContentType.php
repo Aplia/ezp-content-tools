@@ -85,7 +85,6 @@ class ContentType
     public function __construct($identifier, $name=null, $fields = null)
     {
         $this->identifier = $identifier;
-        $this->name = $name ? $name : $identifier;
         if ($fields) {
             $this->set($fields);
         }
