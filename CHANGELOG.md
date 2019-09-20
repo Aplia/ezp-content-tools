@@ -2,6 +2,11 @@
 
 Changelog for the `content-tools` package.
 
+## 1.7.17
+
+- Fixed issue in ContentType constructor, $name parameter was not properly
+  stored on object. Additionally it causes error in PHP 7.
+
 ## 1.7.5
 
 - Fixed bug in updating object relation attributes using eZ objects.
