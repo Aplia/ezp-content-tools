@@ -1023,12 +1023,13 @@ class ContentObjectAttribute
                     throw new ContentError("Failed to import HTTP file into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
                 }
             } else if ($value instanceof HttpFile) {
-                $content = $attribute->attribute('content');
-                if ($value->hasFile && $value->isValid) {
-                    $httpFile = \eZHTTPFile::fetch($value->name);
-                    if ($httpFile && $content) {
-                        $content->setHTTPFile($httpFile);
-                    }
+                $result = null;
+                $httpFile = \eZHTTPFile::fetch($value->name);
+                $contentObject = $object->contentObject;
+                $contentVersionId = $contentObject->attribute("current_version");
+                $mimeData = \eZMimeType::findByFileContents($httpFile->attribute("original_filename"));
+                if (!$attribute->insertHTTPFile($contentObject, $contentVersionId, $this->language, $httpFile, $mimeData, $result)) {
+                    throw new ContentError("Failed to import HTTP file into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
                 }
             } else {
                 throw new ValueError("Cannot update attribute data for '{$this->identifier}', unsupported content value: " . var_export($value, true));
