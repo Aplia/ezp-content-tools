@@ -2,6 +2,10 @@
 
 Changelog for the `content-tools` package.
 
+## 1.7.18
+
+- Fixed an issue uploading file of type HttpFile using ContentType
+
 ## 1.7.17
 
 - Fixed issue in ContentType constructor, $name parameter was not properly
