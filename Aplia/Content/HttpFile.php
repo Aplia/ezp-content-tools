@@ -1,6 +1,9 @@
 <?php
 namespace Aplia\Content;
 
+use eZHTTPFile;
+use ezpI18n;
+
 class HttpFile
 {
     public $name;
