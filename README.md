@@ -18,7 +18,7 @@ chosen attributes.
 
 Example, creating a new content class:
 
-```
+```php
 <?php
 // Define the class, does not modify the database
 $type = new Aplia\Content\ContentType('folder', 'Folder', array(
@@ -73,7 +73,7 @@ properties will lazy-load the values. Note they require that content-class exist
 ### ezselection2
 
 Example
-```
+```php
 <?php
 $type->addAttribute('ezselection2', 'selection2', 'Selection 2', array(
     'value' => array(
@@ -96,7 +96,7 @@ Class-groups can be managed using `ContentType`. To create or delete groups use 
 and `ContentType::deleteGroup`.
 
 For instance:
-```
+```php
 ContentType::createGroup('Sections');
 ```
 
@@ -105,7 +105,7 @@ schedules changes which are written on the next sync. If the group assignment is
 nothing changes.
 
 For instance:
-```
+```php
 $type
     ->addToGroup('Sections')
     ->removeFromGroup('Content')
@@ -115,7 +115,7 @@ $type
 Group assignment may also be specified in the `set()` call by using `groups` key entry.
 
 For instance:
-```
+```php
 $type
     ->set(array(
         'groups' => array('Sections'),
@@ -141,7 +141,7 @@ The following content-class attribute fields may be translated:
 - data_text
 
 For instance:
-```
+```php
 $type
     ->addTranslation(
         'nor-NO',
@@ -172,7 +172,7 @@ class properties. All supported types are set by supplying the
 with entries specific to the datatype.
 e.g. setting max 50 characters for an ezstring attribute.
 
-```
+```php
 <?php
 $type->addAttribute('ezstring', 'title', 'Title', array(
     'value' => array(
@@ -189,7 +189,7 @@ it defaults to 0 (no limit).
 The default value can be set with the `default` parameter in `value`,
 it defaults to '' (empty string).
 
-```
+```php
 <?php
 $type->addAttribute('ezstring', 'title', 'Title', array(
     'value' => array(
@@ -204,7 +204,7 @@ $type->addAttribute('ezstring', 'title', 'Title', array(
 The default value can be set with the `default` parameter in `value`,
 it defaults to 0 (unchecked).
 
-```
+```php
 <?php
 $type->addAttribute('ezboolean', 'has_size', 'Has size?', array(
     'value' => array(
@@ -224,7 +224,7 @@ it defaults to null (no limit).
 The default value can be set with the `default` parameter in `value`,
 it defaults to null.
 
-```
+```php
 <?php
 $type->addAttribute('ezinteger', 'size', 'Size', array(
     'value' => array(
@@ -240,7 +240,7 @@ $type->addAttribute('ezinteger', 'size', 'Size', array(
 The column size can be set with the `columns` parameter in `value`,
 it defaults to 10.
 
-```
+```php
 <?php
 $type->addAttribute('eztext', 'body', 'Body', array(
     'value' => array(
@@ -256,7 +256,7 @@ it defaults to 10.
 
 The tag preset can be set with the `tag_preset` parameter in `value`.
 
-```
+```php
 <?php
 $type->addAttribute('ezxmltext', 'body', 'Body', array(
     'value' => array(
@@ -271,7 +271,7 @@ $type->addAttribute('ezxmltext', 'body', 'Body', array(
 The max file size (in MB) can be set with the `max_file_size` parameter in `value`,
 it defaults to 0 (no limit).
 
-```
+```php
 <?php
 $type->addAttribute('ezimage', 'image', 'Image', array(
     'value' => array(
@@ -290,7 +290,7 @@ in `value`.
 
 The fuzzy match can be turned on or off with the `fuzzy_match` parameter in `value`.
 
-```
+```php
 <?php
 $type->addAttribute('ezimage', 'image', 'Image', array(
     'value' => array(
@@ -310,7 +310,7 @@ in `value`.
 
 The fuzzy match can be turned on or off with the `fuzzy_match` parameter in `value`.
 
-```
+```php
 <?php
 $type->addAttribute('ezimage', 'image', 'Image', array(
     'value' => array(
@@ -326,7 +326,7 @@ $type->addAttribute('ezimage', 'image', 'Image', array(
 The default value can be set with the `default` parameter in `value`,
 it defaults to '' (empty string).
 
-```
+```php
 <?php
 $type->addAttribute('ezurl', 'link', 'Link', array(
     'value' => array(
@@ -380,7 +380,7 @@ linked object IDs.
 
 Example with HTML text:
 
-```
+```php
 <?php
 $object->setAttribute('body', new Aplia\Content\HtmlText('<p>My text</p>'));
 ```
@@ -396,13 +396,13 @@ is selected, the first selection is `0`, the next `1` and so on.
 
 Indentifiers can be specified the same way the datatype support `fromString`.
 
-```
+```php
 <?php
 $object->setAttribute('selection2', 'first|second')
 ```
 
 Or as array
-```
+```php
 <?php
 $object->setAttribute('selection2', ['first', 'second'])
 ```
@@ -415,7 +415,7 @@ Currently only supports uploaded HTTP files. Create an instance of
 For instance if the HTML form contained an `<input type="file" name="portrait_image">`
 then the image file will be available in the file entry `portrait_image`.
 
-```
+```php
 <?php
 $object->setAttribute('image', new Aplia\Content\HttpFile('portrait_image'));
 ```
@@ -453,7 +453,7 @@ Script echoes, so pipe the result to file.
 Here is a configuration which will export all objects of the given content_class, under the given path (container_path, corresponding to `--parent-node`-option). This export assumes the parent directory already exists on the import destination (i.e. remove `--exclude-parent` if the entire directory is to be imported).
 
 (Values in chevrons ('<>') should be replaced with your own options.)
-```
+```console
 vendor/bin/dump_content <container_path> --class=<content_class> --exclude-parent --file-storage=export_files --format=ndjson > <export_name>.ndjson;
 ```
 
@@ -484,7 +484,7 @@ The script might ask whether to remove object relation, or reset ownership, if t
 NB! The content import starts a database transaction, and does not commit before the entire import is finished. This way, in case of errors, an unsuccessful import will rollback the database transaction, so that no wrong data is committed to the database. This means that while the import is running, publishing new content on the destination will not work, and will give a database transaction error. See section "Batch Export/Import" for examples on how to make content publishing possible while importing content.
 
 #### Examples
-```
+```console
 vendor/bin/import_content --temp-path=temp --parent-node=path:kompetansetorget --config=extension/site/import/<config_file>.ini <export_file>
 ```
 
@@ -497,12 +497,12 @@ By dividing the exported content into multiple files, we reduce the number of op
 
 - Export:
 Given an existing export `<export_name>`.ndjson, the following bash script will divide the export into a .head file, which will be prepended to the numbered files. It takes the first occurence of `ez_contentobject`, and splits the following on 5 lines, which corresponds to 5 content objects. PS: This can generate a lot of files.
-```
+```console
 cat <export_name>.ndjson | sed -e '/ez_contentobject/,$d' > <export_name>.head; cat <export_name>.ndjson | sed -n -e '/ez_contentobject/,$p' | split -l5 - <export_name>- --additional-suffix=.tmp --numeric-suffixes=1; for f in <export_name>-*.tmp; do cat <export_name>.head "$f" > "${f%.*}".ndjson; rm "$f"; done
 ```
 
 - Import:
-```
+```console
 for f in <export_name>-*.ndjson; do vendor/bin/import_content --temp-path=temp --parent-node=path:<path> --config=extension/site/import/<config_file>.ini "$f" | tee import_log.txt; done
 ```
 
@@ -528,7 +528,7 @@ a new uuid. It maps from the original UUID to a new UUID
 
 e.g.
 
-```
+```ini
 [Object]
 NodeMap[16a72100ab6e3831dd0dffb10ef22902]=15ab238880ef4e989ab15823c906c005
 ```
@@ -543,7 +543,7 @@ a new uuid. It maps from the original UUID to a new UUID.
 
 e.g.
 
-```
+```ini
 [Object]
 ObjectMap[c1426628bb809712ac78e8527ef93739]=15ab238880ef4e989ab15823c906c005
 ```
@@ -556,18 +556,18 @@ or for all objects.
 
 To transform a single object specify `TransformByUuid`.
 
-```
+```ini
 TransformByUuid[c1426628bb809712ac78e8527ef93739]=FrontpageTransformation
 ```
 
 To transform objects of given class specify `TransformByClass`.
 
-```
+```ini
 TransformByClass[user]=UserTransform
 ```
 
 Transformation for all objects are specified with `Transform`
-```
+```ini
 Transform[]=GenericTransform
 ```
 
@@ -587,7 +587,7 @@ and must be defined in `content.ini` under `DataTypeSettings`
 and the variable `ContentInputHandler`.
 For instance lets say we want to support `ezselection` then add
 
-```
+```ini
 [DataTypeSettings]
 ContentInputHandler[ezselection2]=class;Selection2Handler
 ```
@@ -596,7 +596,7 @@ The handler must then implement the `storeContent` method and
 store the value on the attribute or in the database. A simple
 example follows:
 
-```
+```php
 class Selection2Handler extends ContentBaseHandler implements ContentInputHandler
 {
     public function storeContent($value)
@@ -612,7 +612,7 @@ input then swap out `class` for the corresponding types `text`, `int`, `float` a
 `string` means to pass the value to the `fromString` method on
 the data-type.
 
-```
+```ini
 [DataTypeSettings]
 ContentInputHandler[ezselection2]=string
 ```
@@ -623,7 +623,7 @@ ContentInputHandler[ezselection2]=string
 This package has support for the Phinx system for migrations of database
 content and other data. First install Phinx using composer.
 
-```
+```console
 composer require "robmorgan/phinx:^0.10.6"
 ```
 
@@ -634,7 +634,7 @@ the `sphinx.php` file and make use of the `Aplia\Migration\Configuration` class
 to get automatic setup based on the eZ publish site.
 
 Create the file and add:
-```
+```php
 <?php
 require 'autoload.php';
 $configuration = new \Aplia\Migration\Configuration();
@@ -646,7 +646,7 @@ The configuration assumes all migrations are located in `extension/site/migratio
 If you have an older site with a different extension name for the site the
 path must be configured in `project.ini`, add the following:
 
-```
+```ini
 [Migration]
 Path=extension/mysite/migrations
 ```
@@ -654,19 +654,19 @@ Path=extension/mysite/migrations
 Then use `vendor/bin/phinx` to handle migrations, remember to add `-c phinx.php` to
 after all commands. For instance to see the current status.
 
-```
+```console
 vendor/bin/phinx status -c phinx.php
 ```
 
 To create a new migration file use `create`, for instance:
 
-```
+```console
 vendor/bin/phinx create -c phinx.php Initial
 ```
 
 To run migration use `migrate` command, for instance:
 
-```
+```console
 vendor/bin/phinx migrate -c phinx.php
 ```
 
@@ -677,7 +677,7 @@ may be used inside the migrations.
 This package has support for dumping content classes by given identifiers to a runnable script. The script can be run as a migrate-style PHP snippet.
 
 To run this script manually:
-```
+```console
 php bin/dump_contentclass [identifier ...] [php-style] [preamble] [delete-existing] [update-class-group] [update-creator-id]
 ```
 
@@ -708,7 +708,7 @@ Use this to set a user by object id as creator for the content classes. E.g.: `u
 
 ### Example
 Assuming location is project root:
-```
+```console
 php vendor/aplia/content-tools/bin/dump_contentclass preamble delete-existing update-class-group=Seksjoner update-creator-id=14 news_section campaign_section logo_section > import_content_classes.php
 ```
 
