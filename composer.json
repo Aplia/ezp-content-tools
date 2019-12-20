@@ -1,18 +1,14 @@
 {
     "name": "aplia/content-tools",
-    "description": "PHP library for working with eZ publish content objects",
-    "homepage": "https://bitbucket.org/aplia/library-content-tools",
+    "description": "Improved API for working with content objects in eZ publish legacy",
+    "keywords": ["ezpublish", "migration"],
+    "homepage": "https://github.com/Aplia/ezp-content-tools",
     "license": "MIT",
-    "repositories": [
-        {
-            "type": "composer",
-            "url": "https://packages.aplia.no/"
-        }
-    ],
     "authors": [
         {
             "name": "Aplia dev-team",
-            "homepage": "https://bitbucket.org/aplia"
+            "email": "info@aplia.no",
+            "homepage": "https://github.com/Aplia"
         }
     ],
     "require": {

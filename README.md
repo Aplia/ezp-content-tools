@@ -1,4 +1,4 @@
-# eZ publish support classes for content objects
+# Improved API for working with content objects in eZ publish legacy
 
 This packages contains classes which makes it easier to work with
 content objects when it comes to creating and updating content.
