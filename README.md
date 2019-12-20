@@ -732,3 +732,14 @@ NB! Some attributes might fail to update. For example eZImage. If they do, the o
 - `--new-version`: Whether to publish a new version of updated object as admin. This might return template errors which can be ignored. This parameter presumes Admin user is object id 14.
 
 Run `php vendor/aplia/content-tools/Aplia/Utilities/SearchAndReplace.php --help` for a complete overview.
+
+### Reindexing objects of migrated content class
+The following is a SQL script for adding content objects of a given class to the index queue table. For eksample when using eZFind/Solr. (The script for running this is `php runcronjobs.php -s <siteaccess> indexcontent`) This can be added as a migration. (Note: A future version of this could replace this with a flag on the content class update, which queues the class for indexing.)
+```
+INSERT INTO ezpending_actions (action, created, param)
+SELECT "index_object", NULL, ezcontentobject.id
+FROM ezcontentobject
+INNER JOIN ezcontentclass
+ON ezcontentobject.contentclass_id=ezcontentclass.id
+WHERE ezcontentclass.identifier="<content class identifier ie. article>";
+```
