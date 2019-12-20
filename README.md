@@ -2,10 +2,14 @@
 
 This packages contains classes which makes it easier to work with
 content objects when it comes to creating and updating content.
+It also has functionality for migrating content using [Phinx](https://phinx.org/).
 
 Whenever something is missing or an action fails it will throw
 a proper Exception, see the namespace `Aplia\Content\Exceptions`
 for a list of possible errors.
+
+[![Latest Stable Version](https://img.shields.io/packagist/v/aplia/content-tools.svg?style=flat-square)](https://packagist.org/packages/aplia/content-tools)
+[![Minimum PHP Version](https://img.shields.io/badge/php-%3E%3D%205.3-8892BF.svg?style=flat-square)](https://php.net/)
 
 ## ContentType
 
