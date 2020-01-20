@@ -885,15 +885,13 @@ class ContentObjectAttribute
      * - BinaryFile - Contains the path to the image file locally
      * - HttpFile - Contains the identifier of the POST variable containing
      *              the uploaded file. Is transferred to the attribute.
+     * - null - Empties the attribute content.
      *
      * @note This does not store the attribute content to the database.
      * @throws ValueError If $value is not one of the supported types above.
      */
     public function updateImageType(ContentObject $object, \eZContentObjectAttribute $attribute, $value)
     {
-        if ($value === null) {
-            return;
-        }
         if (is_array($value)) {
             if (isset($value['path'])) {
                 $value = new ImageFile(
@@ -952,6 +950,9 @@ class ContentObjectAttribute
                     $content->setHTTPFile($httpFile);
                 }
             }
+        } else if ($value === null) {
+            $attribute->setContent(null);
+            $attribute->setAttribute('data_text', '');
         } else {
             throw new ValueError("Cannot update attribute data for '{$this->identifier}', unsupported content value: " . var_export($value, true));
         }
