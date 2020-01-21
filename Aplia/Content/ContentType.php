@@ -574,7 +574,7 @@ class ContentType
      * 
      * @return self
      */
-    public function update()
+    public function update($options = array())
     {
         $contentClass = $this->getContentClass();
         $isDirty = false;
@@ -682,7 +682,10 @@ class ContentType
         $handler->setTimestamp( 'sort-key-cache', $time );
         $handler->store();
 
-        \eZContentCacheManager::clearAllContentCache();
+        $clearCache = Arr::get($options, 'clearCache', true);
+        if ($clearCache) {
+            \eZContentCacheManager::clearAllContentCache();
+        }
 
         return $this;
     }
