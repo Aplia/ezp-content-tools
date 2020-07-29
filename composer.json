@@ -21,10 +21,10 @@
         "robmorgan/phinx": "Adds support for database migration"
     },
     "bin": [
-        "bin/dump_contentclass",
-        "bin/dump_content",
-        "bin/import_content",
-        "bin/process_content"
+        "bin/ezp_dump_contentclass",
+        "bin/ezp_dump_content",
+        "bin/ezp_import_content",
+        "bin/ezp_process_content"
     ],
     "autoload": {
         "psr-4": {
