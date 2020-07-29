@@ -1,8 +1,6 @@
 #!/usr/bin/env php
 <?php
 use Aplia\Support\Arr;
-use \eZCLI;
-use \eZScript;
 use Aplia\Content\ContentImporter;
 use Aplia\Content\ContentObject;
 

@@ -1,9 +1,6 @@
 #!/usr/bin/env php
 <?php
 use Aplia\Support\Arr;
-use \eZCLI;
-use \eZScript;
-use \eZContentLanguage;
 use Aplia\Content\Query\QuerySet;
 use Aplia\Content\ContentObject;
 use Aplia\Content\BatchProcessor;
@@ -37,7 +34,7 @@ $options = $script->getOptions("[class:][parent-node:][depth:][attribute:*][only
 $script->initialize();
 
 // Make sure all translations are fetched
-eZContentLanguage::setPrioritizedLanguages(eZContentLanguage::fetchLocaleList());
+\eZContentLanguage::setPrioritizedLanguages(\eZContentLanguage::fetchLocaleList());
 
 $objectMode = true;
 $readOnly = false;

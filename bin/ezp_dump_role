@@ -1,10 +1,6 @@
 #!/usr/bin/env php
 <?php
 use Aplia\Support\Arr;
-use \eZCLI;
-use \eZScript;
-use \eZContentObjectTreeNode;
-use \eZSiteAccess;
 use Aplia\Content\Role;
 use Aplia\Content\ContentObject;
 use Aplia\Content\Exceptions\ObjectDoesNotExist;
@@ -38,7 +34,7 @@ global $adminId, $anonId;
 $adminId = $siteIni->hasVariable('UserSettings', 'AdminUserID') ? (int)$siteIni->variable('UserSettings', 'AdminUserID') : 14;
 $anonId = $siteIni->variable('UserSettings', 'AnonymousUserID');;
 $siteAccessMap = array();
-foreach (eZSiteAccess::siteAccessList() as $siteAccess) {
+foreach (\eZSiteAccess::siteAccessList() as $siteAccess) {
     $siteAccessMap[$siteAccess['id']] = $siteAccess;
 }
 
@@ -327,7 +323,7 @@ foreach ($identifiers as $identifier) {
         $objectIdentifierRepr = var_export($objectIdentifier, true);
         if ($limitId && $limitValue) {
             if ($limitId === 'Subtree') {
-                $limitNode = eZContentObjectTreeNode::fetchByPath($limitValue);
+                $limitNode = \eZContentObjectTreeNode::fetchByPath($limitValue);
                 if (!$limitNode) {
                     throw new ObjectDoesNotExist("Role assignment for role with ID " . $role->role->attribute('id') . " has subtree limitation $limitValue, but the referenced node path does not exist");
                 }
