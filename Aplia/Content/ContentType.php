@@ -383,7 +383,7 @@ class ContentType
         if (isset($this->attributesChange[$identifier])) {
             $attr = $this->attributesChange[$identifier];
             if (!($attr instanceof ContentTypeAttribute)) {
-                $attr = new ContentTypeAttribute($attr['identifier'], Att::get($attr, 'type'), Attr::get($attr, 'name'), $attr);
+                $attr = new ContentTypeAttribute($attr['identifier'], Arr::get($attr, 'type'), Arr::get($attr, 'name'), $attr);
             }
             $this->attributesChange[$identifier] = $attr;
             return $attr;
@@ -587,7 +587,7 @@ class ContentType
             if ($attrData instanceof ContentTypeAttribute) {
                 $attr = $attrData;
             } else {
-                $attr = new ContentTypeAttribute($attrData['identifier'], Att::get($attrData, 'type'), Attr::get($attrData, 'name'), $attrData);
+                $attr = new ContentTypeAttribute($attrData['identifier'], Arr::get($attrData, 'type'), Arr::get($attrData, 'name'), $attrData);
             }
             $attr->update($contentClass);
             $this->_attributes[$attr->identifier] = $attr;
