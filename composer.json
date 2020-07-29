@@ -17,6 +17,9 @@
         "aplia/support": "^1.0",
         "cash/lrucache": "1.0.0"
     },
+    "suggest": {
+        "robmorgan/phinx": "Adds support for database migration"
+    },
     "bin": [
         "bin/dump_contentclass",
         "bin/dump_content",
