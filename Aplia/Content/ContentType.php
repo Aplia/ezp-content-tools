@@ -581,6 +581,7 @@ class ContentType
 
         foreach ($this->attributesNew as $attrData) {
             $attr = $this->createAttribute($attrData);
+            $attr->isStored = true;
             $this->_attributes[$attr->identifier] = $attr;
         }
         foreach ($this->attributesChange as $identifier => $attrData) {
@@ -590,6 +591,7 @@ class ContentType
                 $attr = new ContentTypeAttribute($attrData['identifier'], Arr::get($attrData, 'type'), Arr::get($attrData, 'name'), $attrData);
             }
             $attr->update($contentClass);
+            $attr->isStored = true;
             $this->_attributes[$attr->identifier] = $attr;
         }
         foreach ($this->attributesRemove as $identifier => $attrData) {
@@ -832,15 +834,15 @@ class ContentType
             }
         }
         $contentClass = $this->getContentClass();
-        if (!isset($attr['classAttribute'])) {
-            $classAttribute = $contentClass->fetchAttributeByIdentifier($identifier);
-            if (!$classAttribute) {
-                $classIdentifier = $contentClass->identifier;
-                throw new ObjectDoesNotExist("The content-class '${classIdentifier}' does not have an attribute with identifier '${identifier}'");
-            }
-            $attr['classAttribute'] = $classAttribute;
-        }
         if (!$attr instanceof ContentTypeAttribute) {
+            if (!isset($attr['classAttribute'])) {
+                $classAttribute = $contentClass->fetchAttributeByIdentifier($identifier);
+                if (!$classAttribute) {
+                    $classIdentifier = $contentClass->identifier;
+                    throw new ObjectDoesNotExist("The content-class '${classIdentifier}' does not have an attribute with identifier '${identifier}'");
+                }
+                $attr['classAttribute'] = $classAttribute;
+            }
             $type = Arr::get($attr, 'type');
             $name = Arr::get($attr, 'name');
             if (!isset($attr['language'])) {
@@ -1299,7 +1301,9 @@ class ContentType
         $this->getContentClass();
         $dataMap = $this->_contentClass->dataMap();
         foreach ($dataMap as $identifier => $classAttribute) {
-            $attr = new ContentTypeAttribute($classAttribute->attribute('identifier'), $classAttribute->attribute('data_type_string'), $classAttribute->attribute('name'));
+            $attr = new ContentTypeAttribute($classAttribute->attribute('identifier'), $classAttribute->attribute('data_type_string'), $classAttribute->attribute('name'), array(
+                'isStored' => true,
+            ));
             $attr->classAttribute = $classAttribute;
             $this->_attributes[$identifier] = $attr;
         }

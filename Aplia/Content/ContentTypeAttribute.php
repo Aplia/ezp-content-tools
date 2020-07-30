@@ -6,6 +6,7 @@ use Aplia\Content\Exceptions\ObjectAlreadyExist;
 use Aplia\Content\Exceptions\UnsetValueError;
 use Aplia\Content\Exceptions\ValueError;
 use Aplia\Content\Exceptions\ObjectDoesNotExist;
+use Aplia\Content\Exceptions\PropertyError;
 use Aplia\Support\Arr;
 use SimpleXMLElement;
 use eZPersistentObject;
@@ -34,13 +35,48 @@ use eZContentObjectTreeNode;
  */
 class ContentTypeAttribute
 {
+    /**
+     * The name of the content class attribute, e.g. `'Title'`
+     * @var string
+     */
     public $name;
+    /**
+     * The type of content class attribute, uses the data-type string, e.g. `'ezstring'` or `'ezobjectrelation'`
+     * @var string
+     */
     public $type;
+    /**
+     * The identifier for the content class attribute, e.g. `'title'`.
+     * @var string
+     */
     public $identifier;
-    public $value;
+    /**
+     * The value for the content class attribute, type and structure depends on what $type is set to.
+     * @var mixed
+     */
+    protected $storedValue;
+    /**
+     * True if $storedValue contains valid data, false if it has not yet been set or loaded from database.
+     *
+     * @var bool
+     */
+    protected $hasValue = false;
+    /**
+     * The content class attribute ID
+     * @var int|null
+     */
     public $id;
     public $description;
     public $category;
+    /**
+     * True if the class attribute is stored in database, false if currently being added or modified.
+     * 
+     * If true then the value and other properties must be first loaded from the database,
+     * if false then $value can be accessed directly.
+     *
+     * @var bool
+     */
+    public $isStored = false;
     /**
      * If set places the new attribute after this attribute, specified with an identifier
      */
@@ -55,6 +91,15 @@ class ContentTypeAttribute
     public $isInformationCollector;
     public $canTranslate;
 
+    /**
+     * The content class attribute object or null for new entries.
+     * 
+     * This can either be set in the constructor or is set whenever the attribute is created
+     * or updated. If the object was fetched using ContentType::getAttribute() for existing
+     * data then this variable will be set.
+     *
+     * @var eZContentClassAttribute|null
+     */
     public $classAttribute;
 
     protected $objectTransform;
@@ -97,6 +142,9 @@ class ContentTypeAttribute
             if (isset($fields['language'])) {
                 $this->language = $fields['language'];
             }
+            if (isset($fields['isStored'])) {
+                $this->isStored = $fields['isStored'];
+            }
             if (isset($fields['placeAfter'])) {
                 $this->placeAfter = $fields['placeAfter'];
             } else if (isset($fields['placeBefore'])) {
@@ -104,6 +152,105 @@ class ContentTypeAttribute
             }
             $this->objectTransform = Arr::get($fields, 'objectTransform');
         }
+    }
+
+    /**
+     * Get dynamic property values.
+     * 
+     * - value - The class-attribute value, either temporary stored value or fetched from database.
+     *
+     * @param mixed $name Name of property
+     * @return mixed
+     * @throws ObjectDoesNotExist If no value is stored and it fails to load class-attribute from database
+     * @throws PropertyError If the property does not exist
+     */
+    public function __get($name)
+    {
+        if ($name === 'value') {
+            if ($this->hasValue) {
+                return $this->storedValue;
+            }
+            if ($this->isStored) {
+                // No value, try and load from DB
+                $this->storedValue = $this->attributeFields();
+                $this->hasValue = true;
+                return $this->storedValue;
+            } else {
+                // Not in database and has no value
+                return null;
+            }
+        } else {
+            throw new PropertyError("Unknown property $name");
+        }
+    }
+
+    /**
+     * Sets dynamic properties.
+     * 
+     * - value - Sets class-attribute value, removes storage flag
+     *
+     * @param mixed $name Name of property
+     * @param mixed $value Value for property
+     * @return void 
+     * @throws PropertyError If the property does not exist
+     */
+    public function __set($name, $value)
+    {
+        if ($name === 'value') {
+            $this->hasValue = true;
+            $this->isStored = false;
+            $this->storedValue = $value;
+        } else {
+            throw new PropertyError("Unknown property $name, cannot set new value");
+        }
+    }
+
+    /**
+     * Checks if dynamic property exists
+     *
+     * @param mixed $name Name of property
+     * @return bool True if dynamic property exists, false otherwise
+     */
+    public function __isset($name)
+    {
+        if ($name === 'value') {
+            return $this->hasValue;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Unsets dynamic properties
+     * 
+     * - value - Removes stored value for class-attribute
+     *
+     * @param mixed $name Name of property
+     * @return void
+     * @throws PropertyError If the property does not exist
+     */
+    public function __unset($name)
+    {
+        if ($name === 'value') {
+            if ($this->hasValue) {
+                $this->hasValue = false;
+                $this->storedValue = null;
+            }
+        } else {
+            throw new PropertyError("Unknown property $name, cannot unset");
+        }
+    }
+
+    /**
+     * Resets class-attribute value forcing it to be read from database on next access.
+     *
+     * @return void 
+     */
+    public function reset()
+    {
+        $this->hasValue = false;
+        $this->isStored = true;
+        $this->storedValue = null;
     }
 
     public function create($contentClass)
@@ -741,11 +888,12 @@ class ContentTypeAttribute
      *     'default' => '',
      * );
      * @endcode
+     * 
+     * @return mixed
      */
     public function attributeFields()
     {
         $type = $this->type;
-        $value = $this->value;
         $attribute = $this->classAttribute;
 
         // Special cases for datatypes which does not use the generic class-content
@@ -783,6 +931,7 @@ class ContentTypeAttribute
                 'default' => $attribute->attribute('data_text1'),
             );
         } else if ($type == 'ezselection') {
+            // Returns array with `options` and `is_multiselect`
             $fields = $attribute->content();
             $fields['is_multiselect'] = (bool)$fields['is_multiselect'];
             return $fields;
