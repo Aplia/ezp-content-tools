@@ -1211,7 +1211,7 @@ class ContentObject
             }
         } elseif ($this->id) {
             $contentObject = eZContentObject::fetch($this->id);
-            if ($contentObject) {
+            if (!$contentObject) {
                 throw new ObjectDoesNotExist("No Content Object with ID: '$this->id', cannot remove");
             }
         } else {
@@ -1238,7 +1238,7 @@ class ContentObject
                 }
             } elseif ($this->id) {
                 $this->contentObject = eZContentObject::fetch($this->id);
-                if ($this->contentObject) {
+                if (!$this->contentObject) {
                     throw new ObjectDoesNotExist("Content Object with ID: '$this->id' does not exist");
                 }
             }
