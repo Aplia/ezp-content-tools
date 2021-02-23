@@ -13,6 +13,7 @@ use Aplia\Content\Exceptions\CreationError;
 use Aplia\Content\Exceptions\ContentError;
 use Aplia\Content\Exceptions\AttributeError;
 use Aplia\Content\ContentObjectAttribute;
+use Aplia\Content\Exceptions\TypeError;
 use eZINI;
 use eZDB;
 use eZContentClass;
@@ -620,7 +621,7 @@ class ContentObject
         // If a node was passed the location should not be created but rather updated or moved
         if (isset($location['node'])) {
             if (!($location['node'] instanceof eZContentObjectTreeNode)) {
-                throw TypeError("Location has 'node' entry but it is not a eZContentObjectTreeNode instance");
+                throw new TypeError("Location has 'node' entry but it is not a eZContentObjectTreeNode instance");
             }
             // If we have a node but no parent info is given use the nodes parent
             if (!isset($location['parent_id']) && !isset($location['parent_node']) || !isset($location['parent_uuid'])) {
@@ -1118,6 +1119,7 @@ class ContentObject
                 }
 
             } else {
+                /** @var eZContentObjectTreeNode */
                 $mainNode = $this->contentObject->mainNode();
                 if (!$mainNode) {
                     throw new CreationError("Failed to create a main node for the Content Object");
@@ -1168,7 +1170,7 @@ class ContentObject
     
         $statusValue = self::identifierToStatus($this->status);
         if ($statusValue !== null) {
-            $contentObject->setAttribute('status', $statusValue);
+            $this->contentObject->setAttribute('status', $statusValue);
         }
 
         $db->commit();
@@ -2250,7 +2252,7 @@ class ContentObject
         } else if ($name === 'identifier') {
             if (!$this->_identifier) {
                 $this->loadContentObject();
-                if ($this->_contentClass !== 'unset') {
+                if ($this->_contentClass !== 'unset' && $this->_contentClass instanceof eZContentClass) {
                     $this->_identifier = $this->_contentClass->attribute('identifier');
                 }
             }

@@ -10,6 +10,7 @@ use Aplia\Content\Exceptions\TypeError;
 use Aplia\Content\Exceptions\ImproperlyConfigured;
 use Aplia\Content\ContentTypeAttribute;
 use Aplia\Content\ContentObject;
+use Aplia\Content\Exceptions\ValueError;
 use eZContentClass;
 use eZContentClassGroup;
 use eZContentClassClassGroup;
@@ -355,6 +356,7 @@ class ContentType
         $attribute = $this->_attributes[$identifier];
         $existingType = $attribute->attribute('data_type_string');
         if ($existingType != $type) {
+            $idText = $this->identifierText();
             throw new TypeError("$idText and attribute with identifier: $identifier has the wrong type $existingType, expected $type");
         }
     }
@@ -465,7 +467,7 @@ class ContentType
             $fields['remote_id'] = $this->uuid;
         }
         if (!$existing && $this->id) {
-            $existing = eZContentClass::fetchObject($this->id);
+            $existing = eZContentClass::fetch($this->id);
             if ($existing) {
                 throw new ObjectAlreadyExist("Content Class with ID: '$this->id' already exists, cannot create");
             }
@@ -676,7 +678,6 @@ class ContentType
 
         $this->resetPending();
 
-        \eZExpiryHandler::registerShutdownFunction();
         $handler = \eZExpiryHandler::instance();
         $time = time();
         $handler->setTimestamp( 'user-class-cache', $time );
@@ -1228,7 +1229,7 @@ class ContentType
                 $contentClass = eZContentClass::fetchByRemoteID($this->uuid);
             }
             if (!$contentClass && $this->id) {
-                $contentClass = eZContentClass::fetchObject($this->id);
+                $contentClass = eZContentClass::fetch($this->id);
             }
             if (!$contentClass && $this->identifier) {
                 $contentClass = eZContentClass::fetchByIdentifier($this->identifier);

@@ -1,0 +1,35 @@
+#!/usr/bin/env php
+<?php
+
+use Aplia\Utilities\SearchAndReplace;
+
+@include_once 'config.php';
+require_once 'autoload.php';
+set_time_limit( 0 );
+
+$cli = \eZCLI::instance();
+$script = \eZScript::instance(
+    array(
+        'description' =>
+            "Finds all data_text entries containing search string. Pipe output to file for saving log. The script is default case sensitive.",
+        'use-session' => false,
+        'use-modules' => true,
+        'use-extensions' => true,
+        'site-access' => 'no',
+    )
+);
+
+$script->initialize();
+$script->startup();
+
+$options = $script->getOptions( "[replace][ignore:][case-insensitive][print-urls][new-version][first-upper]", "", array(
+    'replace' => 'Perform replace action',
+    'ignore' => 'Contentobject ids to ignore. Separate multiple ids with comma (\',\')',
+    'case-insensitive' => 'Case insensitive search',
+    'print-urls' => 'Print urls instead of path_identification_string (fetches every node when printing)',
+    'new-version' => 'Whether to publish new version',
+    'first-upper' => 'Whether to explicitly set first character of replace string to uppercase, when search string position is 0. (This should not normally be required, as the optimal way is to run a case sensitive search and replace, which makes this content dependent. It might be required for some strings tho (e.g. "gMail" -> "gmail" ("Gmail" for first word in titles)), and for added ease-of-use in case insensitive replacements.)',
+));
+
+$obj = new SearchAndReplace( $options );
+$script->shutdown();

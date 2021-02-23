@@ -51,6 +51,7 @@ if (is_numeric($parentNodeId)) {
     if (!$parentObject) {
         $script->shutdown(1, "Parent object $parentObjectId does not exist");
     }
+    /** @var eZContentObjectTreeNode|null */
     $parentNode = $parentObject->mainNode();
     if (!$parentNode) {
         $script->shutdown(1, "Parent object $parentObjectId does not have main-node");
@@ -73,7 +74,7 @@ if (is_numeric($parentNodeId)) {
         $script->shutdown(1, "Unknown tree structure for ID '$treeId', must be defined in content.ini");
     } else {
         if ($parentNodeId == 1) {
-            $script->output("Warning: Importing nodes to the top node 1 is not recommended");
+            $cli->output("Warning: Importing nodes to the top node 1 is not recommended");
         }
         $parentNode = \eZContentObjectTreeNode::fetch($parentNodeId);
     }
@@ -128,7 +129,7 @@ if ($adminUser) {
 $db = eZDB::instance();
 $db->begin();
 
-function addNdjsonRecord(ContentImporter $importer, $recordData, $script)
+function addNdjsonRecord(ContentImporter $importer, $recordData, $script, $offset)
 {
     if ($recordData) {
         try {
@@ -158,8 +159,8 @@ function addNdjsonRecord(ContentImporter $importer, $recordData, $script)
 }
 
 function parseNdjson(ContentImporter $importer, $filePath, $script) {
+    $cli = eZCLI::instance();
     $file = fopen($filePath, "rb");
-    $hasIndex = false;
     $buffer = "";
     $offset = 0;
     $newOffset = 0;
@@ -175,7 +176,7 @@ function parseNdjson(ContentImporter $importer, $filePath, $script) {
             $newOffset += strlen($recordData);
             $buffer = substr($buffer, $recordEnd + 1);
             $recordData = trim($recordData);
-            if (addNdjsonRecord($importer, $recordData, $script)) {
+            if (addNdjsonRecord($importer, $recordData, $script, $offset)) {
                 if ($count == 0 && !($importer->hasIndex || !$importer->hasBundle)) {
                     $script->shutdown(1, "The first record received must be an index or bundle, got type: " . $importer->lastRecordType);
                 }
@@ -199,7 +200,7 @@ function parseJson(ContentImporter $importer, $filePath, $script) {
     if (!is_array($jsonData)) {
         return;
     }
-    $importer->importRecord($record);
+    $importer->importRecord($jsonData);
 }
 
 $importer = null;

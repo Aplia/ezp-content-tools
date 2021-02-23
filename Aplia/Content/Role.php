@@ -1,6 +1,7 @@
 <?php
 namespace Aplia\Content;
 
+use Aplia\Content\Exceptions\AttributeError;
 use cash\LRUCache;
 use eZPersistentObject;
 use eZDB;
@@ -399,7 +400,7 @@ class Role
      **/
     public function removeAssignments($user)
     {
-        $assignment = $this->makeAssigmentSchedule($user, $limitId, $limitValue, 'remove');
+        $assignment = $this->makeAssigmentSchedule($user, null, null, 'remove');
         $assignment['context'] = 'user';
         $this->assignments[] = $assignment;
         return $this;
@@ -440,6 +441,7 @@ class Role
                 if (is_object($limitValue)) {
                     if ($limitValue instanceof eZContentObjectTreeNode) {
                     } else if ($limitValue instanceof eZContentObject) {
+                        /** @var eZContentObjectTreeNode */
                         $node = $limitValue->mainNode();
                         if (!$node) {
                             throw new ObjectDoesNotExist("Content object with ID " . $limitValue->attribute('id') . " does not have a main node, cannot use as assignment limitation");
@@ -1321,7 +1323,7 @@ class Role
      * Classes are cached in memory so repeated calls are cheap.
      *
      * @param string $identifier
-     * @return void
+     * @return eZContentClass|null
      */
     public function lookupContentClass($identifier)
     {
@@ -1346,7 +1348,7 @@ class Role
      * Sections are cached in memory so repeated calls are cheap.
      *
      * @param string $identifier
-     * @return void
+     * @return eZSection|null
      */
     public function lookupSection($identifier)
     {

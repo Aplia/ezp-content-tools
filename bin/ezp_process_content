@@ -156,42 +156,42 @@ if ($phpFile) {
             $script->shutdown(1);
         }
         if (!is_callable($result['process'])) {
-            $cli->error("PHP file '${phpFile}' returned a 'process' value but it is not a function, got: " . get_type($result['process']));
+            $cli->error("PHP file '${phpFile}' returned a 'process' value but it is not a function, got: " . gettype($result['process']));
             $script->shutdown(1);
         }
         $params['process'] = $result['process'];
     }
     if (isset($result['visit'])) {
         if (!is_callable($result['visit'])) {
-            $cli->error("PHP file '${phpFile}' returned a 'visit' value but it is not a function, got: " . get_type($result['visit']));
+            $cli->error("PHP file '${phpFile}' returned a 'visit' value but it is not a function, got: " . gettype($result['visit']));
             $script->shutdown(1);
         }
         $params['visit'] = $result['visit'];
     }
     if (isset($result['visited'])) {
         if (!is_callable($result['visited'])) {
-            $cli->error("PHP file '${phpFile}' returned a 'visited' value but it is not a function, got: " . get_type($result['visited']));
+            $cli->error("PHP file '${phpFile}' returned a 'visited' value but it is not a function, got: " . gettype($result['visited']));
             $script->shutdown(1);
         }
         $params['visited'] = $result['visited'];
     }
     if (isset($result['completed'])) {
         if (!is_callable($result['completed'])) {
-            $cli->error("PHP file '${phpFile}' returned a 'completed' value but it is not a function, got: " . get_type($result['completed']));
+            $cli->error("PHP file '${phpFile}' returned a 'completed' value but it is not a function, got: " . gettype($result['completed']));
             $script->shutdown(1);
         }
         $params['completed'] = $result['completed'];
     }
     if (isset($result['skipped'])) {
         if (!is_callable($result['skipped'])) {
-            $cli->error("PHP file '${phpFile}' returned a 'skipped' value but it is not a function, got: " . get_type($result['skipped']));
+            $cli->error("PHP file '${phpFile}' returned a 'skipped' value but it is not a function, got: " . gettype($result['skipped']));
             $script->shutdown(1);
         }
         $params['skipped'] = $result['skipped'];
     }
     if (isset($result['match'])) {
         if (!is_callable($result['match'])) {
-            $cli->error("PHP file '${phpFile}' returned a 'match' value but it is not a function, got: " . get_type($result['match']));
+            $cli->error("PHP file '${phpFile}' returned a 'match' value but it is not a function, got: " . gettype($result['match']));
             $script->shutdown(1);
         }
         $params['match'] = $result['match'];

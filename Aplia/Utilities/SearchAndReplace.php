@@ -1,35 +1,12 @@
 <?php
 
-@include_once 'config.php';
-require_once 'autoload.php';
-set_time_limit( 0 );
+namespace Aplia\Utilities;
 
-$cli = \eZCLI::instance();
-$script = \eZScript::instance(
-    array(
-        'description' =>
-            "Finds all data_text entries containing search string. Pipe output to file for saving log. The script is default case sensitive.",
-        'use-session' => false,
-        'use-modules' => true,
-        'use-extensions' => true,
-        'site-access' => 'no',
-    )
-);
-
-$script->initialize();
-$script->startup();
-
-$options = $script->getOptions( "[replace][ignore:][case-insensitive][print-urls][new-version][first-upper]", "", array(
-    'replace' => 'Perform replace action',
-    'ignore' => 'Contentobject ids to ignore. Separate multiple ids with comma (\',\')',
-    'case-insensitive' => 'Case insensitive search',
-    'print-urls' => 'Print urls instead of path_identification_string (fetches every node when printing)',
-    'new-version' => 'Whether to publish new version',
-    'first-upper' => 'Whether to explicitly set first character of replace string to uppercase, when search string position is 0. (This should not normally be required, as the optimal way is to run a case sensitive search and replace, which makes this content dependent. It might be required for some strings tho (e.g. "gMail" -> "gmail" ("Gmail" for first word in titles)), and for added ease-of-use in case insensitive replacements.)',
-));
-
-$obj = new SearchAndReplace( $options );
-$script->shutdown();
+use Aplia\Content\ContentObject;
+use Exception;
+use eZContentObject;
+use eZContentObjectTreeNode;
+use eZImageAliasHandler;
 
 class SearchAndReplace
 {
@@ -137,7 +114,7 @@ class SearchAndReplace
                     $params["ownerId"] = 14;
                     $params["newVersion"] = true;
                 }
-                $objectUpdater = new Aplia\Content\ContentObject($params);
+                $objectUpdater = new ContentObject($params);
 
                 foreach ($identifiers as $identifier) {
                     $old = $objectUpdater->getContentAttributeValue($identifier);
@@ -147,7 +124,7 @@ class SearchAndReplace
 
                     if (!is_string($old)) {
                         // Does not work, and will give an error
-                        if ($old instanceof \eZImageAliasHandler and isset($old->ContentObjectAttributeData['data_text'])) {
+                        if ($old instanceof eZImageAliasHandler and isset($old->ContentObjectAttributeData['data_text'])) {
                             $new->ContentObjectAttributeData['data_text'] = str_replace($searchString, $replaceString, $old->ContentObjectAttributeData['data_text']);
                             $new = $new->ContentObjectAttributeData;
                         }

@@ -1,6 +1,9 @@
 <?php
 namespace Aplia\Content;
+
+use Aplia\Content\Exceptions\PropertyError;
 use Aplia\Support\Arr;
+use Aplia\Utilities\Formatter;
 
 /**
  * Exports content object data to PHP code.
@@ -80,8 +83,8 @@ EOT
         $params['language'] = $language;
         $uuidString = isset($params['uuid']) ? ", uuid: ".$params['uuid'] : "";
         $className = $contentObject['class_identifier'];
-        $classNameRepr = "\$" . underscoreToCamelCase($className) . "Type";
-        $objectNameRepr = "\$" . lcfirst(str_replace(" ", "", trim($objectName))) . ucfirst(underscoreToCamelCase($className));
+        $classNameRepr = "\$" . Formatter::underscoreToCamelCase($className) . "Type";
+        $objectNameRepr = "\$" . lcfirst(str_replace(" ", "", trim($objectName))) . ucfirst(Formatter::underscoreToCamelCase($className));
         $objectNameRepr = str_replace("-", "", $objectNameRepr);
         $contentTypeClass = $this->contentTypeClass;
 
@@ -119,7 +122,7 @@ EOT
         if ($withLocation && isset($contentObject['locations'])) {
             foreach ($contentObject['locations'] as $nodeId => $contentNode) {
                 if (!isset($contentNode['parent_node_uuid'])) {
-                    $script->shutdown(1, "Parent node uuid not defined in content object $contentObjectId");
+                    throw new PropertyError("Parent node uuid not defined in content object $contentObjectId");
                 }
 
                 $parentTreeIdentifier = \Aplia\Content\ContentObject::mapNodeToTreeIdentifier($contentNode['parent_node_id']);

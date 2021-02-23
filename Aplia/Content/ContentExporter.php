@@ -5,7 +5,7 @@ use eZContentObjectTreeNode;
 use eZContentObject;
 use eZContentLanguage;
 use eZSection;
-use eZUser;
+use eZTagsObject;
 
 class ContentExporter
 {
@@ -112,6 +112,7 @@ class ContentExporter
         $contentClass = $contentObject->contentClass();
         $modifiedDate = new DateTime("@" . $contentObject->attribute('modified'));
         $publishedDate = new DateTime("@" . $contentObject->attribute('published'));
+        /** @var eZContentObjectTreeNode|null */
         $mainNode = $contentObject->mainNode();
         $data = array(
             '__type__' => 'ez_contentobject',
@@ -511,7 +512,7 @@ class ContentExporter
                 if (isset($this->tagMap[$tagData['uuid']])) {
                     continue;
                 }
-                $tag = \eZTagsObject::fetchByRemoteID($tagData['uuid']);
+                $tag = eZTagsObject::fetchByRemoteID($tagData['uuid']);
                 $this->addTag($tag);
             }
         }

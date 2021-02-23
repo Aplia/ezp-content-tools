@@ -2,6 +2,7 @@
 <?php
 use Aplia\Support\Arr;
 use Aplia\Content\ContentType;
+use Aplia\Utilities\Formatter;
 
 @include_once 'config.php';
 require_once 'autoload.php';
@@ -36,13 +37,6 @@ if (!in_array($phpStyle,  array('model', 'migrate'))) {
     $script->shutdown(1, "Unsupported --php-style option $phpStyle");
 }
 $script->initialize();
-
-function underscoreToCamelCase($string)
-{
-    $str = str_replace(' ', '', ucwords(str_replace('_', " ", $string)));
-    $str = lcfirst($str);
-    return $str;
-}
 
 function indentTextLines($text, $indentation=4, $first=true)
 {
@@ -180,7 +174,7 @@ foreach ($identifiers as $identifier) {
         }
     }
     $fieldsRepr = indentTextLines(var_export($fields, true), 8, false);
-    $typeVar = "\$" . underscoreToCamelCase($identifier . "_class");
+    $typeVar = "\$" . Formatter::underscoreToCamelCase($identifier . "_class");
     $attributes = $type->attributes;
     $languageNames = array($mainLanguage->attribute('locale'));
     foreach ($languages as $language) {

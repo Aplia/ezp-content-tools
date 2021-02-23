@@ -4,6 +4,7 @@ use Aplia\Support\Arr;
 use Aplia\Content\Role;
 use Aplia\Content\ContentObject;
 use Aplia\Content\Exceptions\ObjectDoesNotExist;
+use Aplia\Utilities\Formatter;
 
 @include_once 'config.php';
 require_once 'autoload.php';
@@ -36,13 +37,6 @@ $anonId = $siteIni->variable('UserSettings', 'AnonymousUserID');;
 $siteAccessMap = array();
 foreach (\eZSiteAccess::siteAccessList() as $siteAccess) {
     $siteAccessMap[$siteAccess['id']] = $siteAccess;
-}
-
-function underscoreToCamelCase($string)
-{
-    $str = str_replace(' ', '', ucwords(str_replace('_', " ", $string)));
-    $str = lcfirst($str);
-    return $str;
 }
 
 function indentTextLines($text, $indentation=4, $first=true)
@@ -157,7 +151,7 @@ foreach ($identifiers as $identifier) {
         'name' => $identifierRepr,
     );
     $fieldsRepr = indentTextLines(var_export($fields, true), 8, false);
-    $roleNameVar = "\$" . underscoreToCamelCase($identifier . "_role");
+    $roleNameVar = "\$" . Formatter::underscoreToCamelCase($identifier . "_role");
 
     $policies = array();
     foreach ($role->policies as $policy) {

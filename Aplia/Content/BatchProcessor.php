@@ -3,6 +3,7 @@ namespace Aplia\Content;
 use Aplia\Support\Arr;
 use Aplia\Content\Query\QuerySet;
 use Aplia\Content\ContentObject;
+use Aplia\Content\Exceptions\TypeError;
 use eZContentObjectTreeNode;
 
 class BatchProcessor

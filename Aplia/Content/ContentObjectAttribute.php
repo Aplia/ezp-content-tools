@@ -12,8 +12,11 @@ use Aplia\Content\Exceptions\UnsetValueError;
 use Aplia\Content\Exceptions\HtmlError;
 use Aplia\Content\Exceptions\FileDoesNotExist;
 use Aplia\Content\Exceptions\ContentError;
+use Aplia\Content\Exceptions\ImproperlyConfigured;
+use DOMElement;
 use eZFile;
 use eZDir;
+use eZMimeType;
 
 class ContentObjectAttribute
 {
@@ -619,7 +622,7 @@ class ContentObjectAttribute
                     if (isset($country['Alpha2'])) {
                         $identifiers[] = $country['Alpha2'];
                     } else if (isset($country['identifier'])) {
-                        $identifiers[] = $countr['identifier'];
+                        $identifiers[] = $country['identifier'];
                     } else {
                         continue;
                     }
@@ -902,6 +905,7 @@ class ContentObjectAttribute
             }
         }
 
+        $result = null;
         if ($value instanceof ImageFile) {
             $path = $value->path;
             if (!file_exists($path)) {
@@ -912,6 +916,7 @@ class ContentObjectAttribute
             if (!$attribute->insertRegularFile($contentObject, $contentVersionId, $this->language, $path, $result)) {
                 throw new ContentError("Failed to import file $path into ezimage attribute '" . $attribute->attribute('identifier') . "'");
             }
+            /** @var \eZImageAliasHandler */
             $content = $attribute->content();
             if ($value->originalFilename !== null) {
                 $content->setAttribute('original_filename', $value->originalFilename);
@@ -930,6 +935,7 @@ class ContentObjectAttribute
             if (!$attribute->insertRegularFile($contentObject, $contentVersionId, $this->language, $path, $result)) {
                 throw new ContentError("Failed to import file $path into ezimage attribute '" . $attribute->attribute('identifier') . "'");
             }
+            /** @var \eZImageAliasHandler */
             $content = $attribute->content();
             if ($value->originalFilename !== null) {
                 $content->setAttribute('original_filename', $value->originalFilename);
@@ -984,6 +990,7 @@ class ContentObjectAttribute
         }
 
         $tempPath = null;
+        $result = null;
         try {
             if ($value instanceof ImageFile || $value instanceof BinaryFile) {
                 $path = $value->path;
@@ -1009,6 +1016,7 @@ class ContentObjectAttribute
                 if (!$attribute->insertRegularFile($contentObject, $contentVersionId, $this->language, $path, $result)) {
                     throw new ContentError("Failed to import file $path into ezbinaryfile attribute '" . $attribute->attribute('identifier') . "'");
                 }
+                /** @var \eZBinaryFile */
                 $content = $attribute->content();
                 if ($value->originalFilename !== null) {
                     $content->setAttribute('original_filename', $originalFilename);

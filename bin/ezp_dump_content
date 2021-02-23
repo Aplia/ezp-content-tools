@@ -39,13 +39,6 @@ $options = $script->getOptions("[format:][preamble][use-namespace][class:][paren
 ));
 $script->initialize();
 
-function underscoreToCamelCase($string)
-{
-    $str = str_replace(' ', '', ucwords(str_replace('_', " ", $string)));
-    $str = lcfirst($str);
-    return $str;
-}
-
 function indentTextLines($text, $indentation=4, $first=true)
 {
     $indentText = str_repeat(" ", $indentation);
@@ -202,6 +195,7 @@ function decodeNodeUuid($text)
         if (!$object) {
             return null;
         }
+        /** @var eZContentObjectTreeNode|null */
         $node = $object->mainNode();
         if (!$node) {
             return null;
@@ -213,6 +207,7 @@ function decodeNodeUuid($text)
         if (!$object) {
             return null;
         }
+        /** @var eZContentObjectTreeNode|null */
         $node = $object->mainNode();
         if (!$node) {
             return null;
@@ -279,6 +274,7 @@ foreach ($nodes as $idx => $parentNodeId) {
         if (!$parentObject) {
             $script->shutdown(1, "Parent object $parentObjectId does not exist");
         }
+        /** @var eZContentObjectTreeNode|null */
         $parentNode = $parentObject->mainNode();
         if (!$parentNode) {
             $script->shutdown(1, "Parent object $parentObjectId does not have main-node");
@@ -290,6 +286,7 @@ foreach ($nodes as $idx => $parentNodeId) {
         if (!$parentObject) {
             $script->shutdown(1, "Parent object with UUID $parentObjectUuid does not exist");
         }
+        /** @var eZContentObjectTreeNode|null */
         $parentNode = $parentObject->mainNode();
         if (!$parentNode) {
             $script->shutdown(1, "Parent object with UUID $parentObjectUuid does not have main-node");

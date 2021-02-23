@@ -281,7 +281,7 @@ class ContentTypeAttribute
             'category' => $this->category !== null ? $this->category : '',
         );
         if ($this->id) {
-            $existing = eZContentClassAttribute::fetchObject($this->id);
+            $existing = eZContentClassAttribute::fetch($this->id);
             if ($existing) {
                 throw new ObjectAlreadyExist("Content Class Attribute with ID: '$this->id' already exists, cannot create");
             }
@@ -453,7 +453,7 @@ class ContentTypeAttribute
         }
 
         if ($this->description !== null) {
-            $this->setDescription($description, $attribute);
+            $this->setDescription($this->description, $attribute);
         }
         $placement = null;
         if ($this->placeAfter) {
@@ -936,6 +936,7 @@ class ContentTypeAttribute
             $fields['is_multiselect'] = (bool)$fields['is_multiselect'];
             return $fields;
         } else if ($type == 'ezselection2') {
+            /** @var array */
             $fields = $attribute->content();
             if (is_array($fields['options']) and $fields['options']) {
                 $_options = [];

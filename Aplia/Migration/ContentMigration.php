@@ -1,5 +1,7 @@
 <?php
 namespace Aplia\Migration;
+
+use ErrorException;
 use Phinx\Migration\AbstractMigration;
 use Exception;
 use eZDB;

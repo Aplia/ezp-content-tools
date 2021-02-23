@@ -12,6 +12,9 @@ use Aplia\Content\Exceptions\ValueError;
 use eZContentObject;
 use eZContentObjectTreeNode;
 use Aplia\Content\Exceptions\ObjectDoesNotExist;
+use eZContentLanguage;
+use eZDB;
+use eZRemoteIdUtility;
 
 class ContentImporter
 {
@@ -677,6 +680,7 @@ class ContentImporter
                 $relationUuid = Arr::get($relation, 'uuid');
                 if (isset($this->mapObject[$relation['uuid']])) {
                     $newRelation = $this->mapObject[$relation['uuid']];
+                    $relationName = Arr::get($relation, 'name', '<no-name>');
                     if (isset($newRelation['removed'])) {
                         if ($this->verbose) {
                             echo "Object with UUID $uuid, relation UUID (name=${relationName}) $relationUuid was removed\n";
@@ -685,7 +689,6 @@ class ContentImporter
                         continue;
                     }
                     $newRelationUuid = $newRelation['uuid'];
-                    $relationName = Arr::get($relation, 'name', '<no-name>');
                     if ($this->verbose) {
                         echo "Object with UUID $uuid, relation UUID (name=${relationName}) remapped from $relationUuid to $newRelationUuid\n";
                     }
@@ -1310,7 +1313,7 @@ class ContentImporter
     public function contentObjectExists($uuid)
     {
         $db = eZDB::instance();
-        $remoteID = $db->escapeString( $remoteID );
+        $remoteID = $db->escapeString( $uuid );
         $resultArray = $db->arrayQuery('SELECT id FROM ezcontentobject WHERE remote_id=\'' . $remoteID . '\'');
         return count($resultArray) == 1;
     }
@@ -2783,7 +2786,7 @@ class ContentImporter
     public function updateNodeContent($nodeData)
     {
         if ($nodeData['status'] === 'new') {
-            throw ImportDenied("Reached a node with status 'new' while updating node content");
+            throw new ImportDenied("Reached a node with status 'new' while updating node content");
         }
         $objectData = null;
         if (isset($this->objectIndex[$nodeData['object_uuid']])) {
