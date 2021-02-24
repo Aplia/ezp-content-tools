@@ -73,6 +73,7 @@ properties will lazy-load the values. Note they require that content-class exist
 ### ezselection2
 
 Example
+
 ```php
 <?php
 $type->addAttribute('ezselection2', 'selection2', 'Selection 2', array(
@@ -96,6 +97,7 @@ Class-groups can be managed using `ContentType`. To create or delete groups use 
 and `ContentType::deleteGroup`.
 
 For instance:
+
 ```php
 ContentType::createGroup('Sections');
 ```
@@ -105,6 +107,7 @@ schedules changes which are written on the next sync. If the group assignment is
 nothing changes.
 
 For instance:
+
 ```php
 $type
     ->addToGroup('Sections')
@@ -115,6 +118,7 @@ $type
 Group assignment may also be specified in the `set()` call by using `groups` key entry.
 
 For instance:
+
 ```php
 $type
     ->set(array(
@@ -132,15 +136,18 @@ Some fields of content-classes and their attributs may be translated, this is do
 `addTranslation()` and `removeTranslation()`.
 
 The following content-class fields may be translated:
+
 - name
 - description
 
 The following content-class attribute fields may be translated:
+
 - name
 - description
 - data_text
 
 For instance:
+
 ```php
 $type
     ->addTranslation(
@@ -301,26 +308,6 @@ $type->addAttribute('ezimage', 'image', 'Image', array(
 ))
 ```
 
-### ezobjectrelation
-
-The selection type can be set with the `selection_type` parameter in `value`.
-
-The default selection node can be set with the `default_selection_node` parameter
-in `value`.
-
-The fuzzy match can be turned on or off with the `fuzzy_match` parameter in `value`.
-
-```php
-<?php
-$type->addAttribute('ezimage', 'image', 'Image', array(
-    'value' => array(
-        'selection_type' => 1,
-        'default_selection_node' => 2,
-        'fuzzy_match' => false
-    )
-))
-```
-
 ### ezurl
 
 The default value can be set with the `default` parameter in `value`,
@@ -385,12 +372,10 @@ Example with HTML text:
 $object->setAttribute('body', new Aplia\Content\HtmlText('<p>My text</p>'));
 ```
 
-
 ### ezselection
 
 This expects the selection value to be the integer value for the key which
 is selected, the first selection is `0`, the next `1` and so on.
-
 
 ### ezselection2
 
@@ -402,6 +387,7 @@ $object->setAttribute('selection2', 'first|second')
 ```
 
 Or as array
+
 ```php
 <?php
 $object->setAttribute('selection2', ['first', 'second'])
@@ -421,13 +407,16 @@ $object->setAttribute('image', new Aplia\Content\HttpFile('portrait_image'));
 ```
 
 ## Content Export/Import
+
 Content-tools has support for exporting/importing subtrees across sites, while also preserving ownership, relations, and embedded content. Remember to not have mismatching package versions of this when exporting from one project, and importing to another. It might require the use of a config file in the import, which maps content in the export to content in the destination. See section "Configuration for import" for more info regarding this.
 
 ### Content Export
+
 Exporting content is done with `bin/dump_content`. At the time of writing, these are the current available options:
 
 (`vendor/bin/dump_content --help`)
-```
+
+```console
 Options:
   --format=VALUE           Type of format, choose between json, ndjson, php and line
   --preamble               Whether to include preamble when exporting php (php format only)
@@ -450,15 +439,18 @@ Options:
 Script echoes, so pipe the result to file.
 
 #### Examples
+
 Here is a configuration which will export all objects of the given content_class, under the given path (container_path, corresponding to `--parent-node`-option). This export assumes the parent directory already exists on the import destination (i.e. remove `--exclude-parent` if the entire directory is to be imported).
 
 (Values in chevrons ('<>') should be replaced with your own options.)
+
 ```console
 vendor/bin/dump_content <container_path> --class=<content_class> --exclude-parent --file-storage=export_files --format=ndjson > <export_name>.ndjson;
 ```
 
 When setting file storage path, this folder should be located in the same folder as the export files. For example:
-```
+
+```console
 export_content
 |-  <export_name.ndjson>
 |-  export_files
@@ -467,28 +459,32 @@ export_content
 ```
 
 ### Content Import
+
 Importing content is done with `bin/import_content`. At the time of writing, these are the current available options:
 
 (`vendor/bin/import_content --help`)
-```
+
+```console
 --parent-node=VALUE  Choose starting point for import of content objects, defaults to root-node 1. Specifiy either node ID, node:<id>, object:<id>, path:<alias-path>, or tree:<id> e.g tree:content, tree:media, tree:users, tree:top
 --config=VALUE       Config file for mapping content in the export (e.g. node ids, uuids) to content in the import destination. See more about this in the section about configuration.
 --temp-path=VALUE    Path to place to use for temporary files
 --yes                Whether to answer yes on all questions. Use with care.
 ```
 
-The import logs through stdout, so pipe to file to save log output. For example use ` | tee import_log.txt`. (Piping to tee might not show interactive questions, so be sure that the script is not waiting for question response, if no update is showing.)
+The import logs through stdout, so pipe to file to save log output. For example use `| tee import_log.txt`. (Piping to tee might not show interactive questions, so be sure that the script is not waiting for question response, if no update is showing.)
 
 The script might ask whether to remove object relation, or reset ownership, if the object in question neither exists in the target database, or in the import. (Big imports might prompt for this A LOT, which is why the `--yes`-parameter was added.)
 
 NB! The content import starts a database transaction, and does not commit before the entire import is finished. This way, in case of errors, an unsuccessful import will rollback the database transaction, so that no wrong data is committed to the database. This means that while the import is running, publishing new content on the destination will not work, and will give a database transaction error. See section "Batch Export/Import" for examples on how to make content publishing possible while importing content.
 
 #### Examples
+
 ```console
 vendor/bin/import_content --temp-path=temp --parent-node=path:kompetansetorget --config=extension/site/import/<config_file>.ini <export_file>
 ```
 
 ### NB! Batch Export/Import
+
 By dividing the exported content into multiple files, we reduce the number of operations before content is committed to the database, and thereby make it possible to publish content.
 
 (This is the only current support for this because of all the actions required for import of a given object. I.e.: 1. Creating node/object skeleton, 2. Creating object, 3. Updating the object with data. It is done this way to be able to preserve locations, relations and ownerships when importing objects which depend on other objects)
@@ -497,15 +493,16 @@ By dividing the exported content into multiple files, we reduce the number of op
 
 - Export:
 Given an existing export `<export_name>`.ndjson, the following bash script will divide the export into a .head file, which will be prepended to the numbered files. It takes the first occurence of `ez_contentobject`, and splits the following on 5 lines, which corresponds to 5 content objects. PS: This can generate a lot of files.
+
 ```console
 cat <export_name>.ndjson | sed -e '/ez_contentobject/,$d' > <export_name>.head; cat <export_name>.ndjson | sed -n -e '/ez_contentobject/,$p' | split -l5 - <export_name>- --additional-suffix=.tmp --numeric-suffixes=1; for f in <export_name>-*.tmp; do cat <export_name>.head "$f" > "${f%.*}".ndjson; rm "$f"; done
 ```
 
 - Import:
+
 ```console
 for f in <export_name>-*.ndjson; do vendor/bin/import_content --temp-path=temp --parent-node=path:<path> --config=extension/site/import/<config_file>.ini "$f" | tee import_log.txt; done
 ```
-
 
 ## Configuration for import
 
@@ -567,6 +564,7 @@ TransformByClass[user]=UserTransform
 ```
 
 Transformation for all objects are specified with `Transform`
+
 ```ini
 Transform[]=GenericTransform
 ```
@@ -617,7 +615,6 @@ the data-type.
 ContentInputHandler[ezselection2]=string
 ```
 
-
 ## Migration
 
 This package has support for the Phinx system for migrations of database
@@ -634,12 +631,14 @@ the `sphinx.php` file and make use of the `Aplia\Migration\Configuration` class
 to get automatic setup based on the eZ publish site.
 
 Create the file and add:
+
 ```php
 <?php
 require 'autoload.php';
 $configuration = new \Aplia\Migration\Configuration();
 return $configuration->setupPhinx();
 ```
+
 and add it to git.
 
 The configuration assumes all migrations are located in `extension/site/migrations`.
@@ -674,9 +673,11 @@ To migrate eZ publish content the classes `ContentType` and `ContentObject`
 may be used inside the migrations.
 
 ## Content class export
+
 This package has support for dumping content classes by given identifiers to a runnable script. The script can be run as a migrate-style PHP snippet.
 
 To run this script manually:
+
 ```console
 php bin/dump_contentclass [identifier ...] [php-style] [preamble] [delete-existing] [update-class-group] [update-creator-id]
 ```
@@ -686,28 +687,36 @@ Output goes to `stdout`, so pipe to a file to save it.
 ### Options
 
 #### identifier
+
 Specify which content class identifiers to export. It supports multiple values. E.g.: `folder article`.
 
 #### php-style
+
 Set to migrate, to use migrate style. E.g.: `php-style=migrate`
 
 #### preamble
+
 Set to include boilerplate script options before the class definitions. E.g.: `preamble`.
 
 #### delete-existing
+
 Include this to delete the existing content classes instead of updating existing.
 
 #### update-class-group
+
 Use this to reset the class group on all exported classes to something of your choice. E.g.: `update-class-group=Seksjoner`.
 
 NB! Create this class group beforehand.
 
 #### update-creator-id
+
 Use this to set a user by object id as creator for the content classes. E.g.: `update-creator-id=14` to set creator as admin.
 (This uses `eZUser::setCurrentlyLoggedInUser()`.)
 
 ### Example
+
 Assuming location is project root:
+
 ```console
 php vendor/aplia/content-tools/bin/dump_contentclass preamble delete-existing update-class-group=Seksjoner update-creator-id=14 news_section campaign_section logo_section > import_content_classes.php
 ```
@@ -739,8 +748,10 @@ NB! Some attributes might fail to update. For example eZImage. If they do, the o
 Run `php vendor/bin/ezp_search_and_replace --help` for a complete overview.
 
 ### Reindexing objects of migrated content class
+
 The following is a SQL script for adding content objects of a given class to the index queue table. For example when using eZFind/Solr. (The script for running this is `php runcronjobs.php -s <siteaccess> indexcontent`) This can be added as a migration. (Note: A future version of this could replace this with a flag on the content class update, which queues the class for indexing.)
-```
+
+```SQL
 INSERT INTO ezpending_actions (action, created, param)
 SELECT "index_object", NULL, ezcontentobject.id
 FROM ezcontentobject
