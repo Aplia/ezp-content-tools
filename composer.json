@@ -24,7 +24,8 @@
         "bin/ezp_dump_contentclass",
         "bin/ezp_dump_content",
         "bin/ezp_import_content",
-        "bin/ezp_process_content"
+        "bin/ezp_process_content",
+        "bin/ezp_search_and_replace"
     ],
     "autoload": {
         "psr-4": {
