@@ -27,6 +27,28 @@ class Configuration
         $script->initialize();
         $script->shutdown();
 
+        // Login admin user to ensure all content operations have sufficient permissions
+        $projectIni = eZINI::instance('project.ini');
+        /** @var eZUser|null */
+        $user = null;
+        if ($projectIni->hasVariable('Migration', 'User')) {
+            /** @var mixed */
+            $migrationUser = $projectIni->variable('Migration', 'User');
+            if (is_numeric($migrationUser)) {
+                // Fetch by object ID
+                $user = eZUser::instance($migrationUser);
+            } elseif (is_string($migrationUser) && $migrationUser) {
+                // Fetch by login name
+                /** @var eZUser */
+                $user = eZUser::fetchByName($migrationUser);
+            }
+        }
+        if (!$user) {
+            // No user set, use default admin user
+            $user = eZUser::instance(14);
+        }
+        $user->loginCurrent();
+
         // Make sure all translations are fetched
         eZContentLanguage::setPrioritizedLanguages(eZContentLanguage::fetchLocaleList());
     }
