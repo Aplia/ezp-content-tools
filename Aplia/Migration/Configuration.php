@@ -36,16 +36,16 @@ class Configuration
             $migrationUser = $projectIni->variable('Migration', 'User');
             if (is_numeric($migrationUser)) {
                 // Fetch by object ID
-                $user = eZUser::instance($migrationUser);
+                $user = \eZUser::instance($migrationUser);
             } elseif (is_string($migrationUser) && $migrationUser) {
                 // Fetch by login name
                 /** @var eZUser */
-                $user = eZUser::fetchByName($migrationUser);
+                $user = \eZUser::fetchByName($migrationUser);
             }
         }
         if (!$user) {
             // No user set, use default admin user
-            $user = eZUser::instance(14);
+            $user = \eZUser::instance(14);
         }
         $user->loginCurrent();
 
