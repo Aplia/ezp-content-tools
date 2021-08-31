@@ -650,6 +650,13 @@ path must be configured in `project.ini`, add the following:
 Path=extension/mysite/migrations
 ```
 
+Or if you have migrated to using namespaces, add the following (multiple namespaced paths can be added if needed):
+
+```ini
+[Migration]
+NamespacedPaths[Namespace\Path]=extension/mysite/migrations
+```
+
 Then use `vendor/bin/phinx` to handle migrations, remember to add `-c phinx.php` to
 after all commands. For instance to see the current status.
 

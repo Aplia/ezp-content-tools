@@ -80,6 +80,8 @@ class Configuration
         $projectIni = eZINI::instance('project.ini');
         if ($projectIni->hasVariable('Migration', 'Path')) {
             $migrationsPath = $projectIni->variable('Migration', 'Path');
+        } else if ($projectIni->hasVariable('Migration', 'NamespacedPaths')) {
+            $migrationsPath = $projectIni->variable('Migration', 'NamespacedPaths');
         } else {
             $migrationsPath = "extension/site/migrations";
         }
